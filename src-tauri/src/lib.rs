@@ -51,10 +51,14 @@ fn get_embedding_model(name: &str) -> EmbeddingModel {
 }
 
 fn get_table_name(container: &str) -> String {
-    // Sanitize container name to be safe for table name
-    // simple approach: c_<hex(name)> to be extremely safe
-    let hex_name: String = container.as_bytes().iter().map(|b| format!("{:02x}", b)).collect();
-    format!("c_{}", hex_name)
+    let sanitized: String = container.chars().map(|c| {
+        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            c.to_string()
+        } else {
+            format!("{:04x}", c as u32)
+        }
+    }).collect();
+    format!("c_{}", sanitized)
 }
 
 struct DbState {

@@ -284,8 +284,8 @@ function App() {
     try {
       await open(path);
     } catch (e) {
-      console.error(e);
-      setStatus("Failed to open file");
+      console.error("Failed to open file:", path, e);
+      setStatus(`Failed to open: ${String(e)}`);
     }
   }
 
@@ -378,17 +378,20 @@ function App() {
 
           {results.length > 0 && (
             <AutoSizerAny>
-              {({ height, width }: { height: number; width: number }) => (
-                <List<RowData>
-                  listRef={listRef}
-                  style={{ width, height }}
-                  rowCount={results.length}
-                  rowHeight={78}
-                  rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
-                  className="result-list-virtualized"
-                  rowComponent={Row}
-                />
-              )}
+              {({ height, width }: { height: number; width: number }) => {
+                console.log("AutoSizer dims:", width, height);
+                return (
+                  <List<RowData>
+                    listRef={listRef}
+                    style={{ width, height }}
+                    rowCount={results.length}
+                    rowHeight={78}
+                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
+                    className="result-list-virtualized"
+                    rowComponent={Row}
+                  />
+                )
+              }}
             </AutoSizerAny>
           )}
         </div>

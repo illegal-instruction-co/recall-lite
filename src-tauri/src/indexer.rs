@@ -234,27 +234,26 @@ pub async fn reset_index(db_path: &Path, table_name: &str) -> Result<()> {
 }
 
 async fn get_or_create_table(db: &Connection, table_name: &str, dim: usize) -> Result<Table> {
-    let table_exists = db.table_names().execute().await?.contains(&table_name.to_string());
-
-    if table_exists {
-        let table = db.open_table(table_name).execute().await?;
-        let schema = table.schema().await?;
-        
-        let mut schema_valid = false;
-        if let Some(field) = schema.field_with_name("vector").ok() {
-            if let DataType::FixedSizeList(_, size) = field.data_type() {
-                if *size == dim as i32 {
-                    schema_valid = true;
+    match db.open_table(table_name).execute().await {
+        Ok(table) => {
+            let schema = table.schema().await?;
+            
+            let mut schema_valid = false;
+            if let Some(field) = schema.field_with_name("vector").ok() {
+                if let DataType::FixedSizeList(_, size) = field.data_type() {
+                    if *size == dim as i32 {
+                        schema_valid = true;
+                    }
                 }
             }
-        }
 
-        if schema_valid {
-            return Ok(table);
-        } else {
-            // Schema mismatch (dimension changed), drop and recreate
-            let _ = db.drop_table(table_name, &[]).await;
+            if schema_valid {
+                return Ok(table);
+            } else {
+                let _ = db.drop_table(table_name, &[]).await;
+            }
         }
+        Err(_) => {}
     }
 
     // Create new table
