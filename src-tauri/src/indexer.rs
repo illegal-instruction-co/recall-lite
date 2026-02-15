@@ -27,7 +27,9 @@ struct Record {
 pub fn load_model(model: EmbeddingModel) -> Result<TextEmbedding> {
     let mut options = InitOptions::default();
     options.model_name = model;
-    options.show_download_progress = true;
+    
+    options.show_download_progress = cfg!(debug_assertions);
+
     TextEmbedding::try_new(options)
 }
 

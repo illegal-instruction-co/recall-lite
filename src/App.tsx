@@ -216,7 +216,7 @@ function App() {
       </div>
 
       {/* Status Bar Footer */}
-      <div className="status-bar shrink-0 h-8 px-4 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
+      <div className="status-bar shrink-0 h-8 px-6 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
         <div className="flex items-center gap-3 overflow-hidden">
           {status ? (
             <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
