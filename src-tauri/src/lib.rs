@@ -1,5 +1,6 @@
 mod indexer;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -13,17 +14,28 @@ use std::io::Write;
 use serde::Deserialize;
 
 #[derive(Serialize, Deserialize, Clone)]
+struct ContainerInfo {
+    description: String,
+    indexed_paths: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 struct Config {
     embedding_model: String,
-    containers: Vec<String>,
+    containers: HashMap<String, ContainerInfo>,
     active_container: String,
 }
 
 impl Default for Config {
     fn default() -> Self {
+        let mut containers = HashMap::new();
+        containers.insert("Default".to_string(), ContainerInfo {
+            description: String::new(),
+            indexed_paths: Vec::new(),
+        });
         Self {
             embedding_model: "MultilingualE5Small".to_string(),
-            containers: vec!["Default".to_string()],
+            containers,
             active_container: "Default".to_string(),
         }
     }
@@ -46,7 +58,7 @@ fn get_embedding_model(name: &str) -> EmbeddingModel {
     match name {
         "AllMiniLML6V2" => EmbeddingModel::AllMiniLML6V2,
         "MultilingualE5Small" => EmbeddingModel::MultilingualE5Small,
-         _ => EmbeddingModel::MultilingualE5Small,
+        _ => EmbeddingModel::MultilingualE5Small,
     }
 }
 
@@ -78,26 +90,43 @@ pub struct SearchResult {
     score: f32,
 }
 
+#[derive(Serialize, Clone)]
+struct ContainerListItem {
+    name: String,
+    description: String,
+    indexed_paths: Vec<String>,
+}
+
 #[tauri::command]
 async fn get_containers(
     config_state: tauri::State<'_, ConfigState>,
-) -> Result<(Vec<String>, String), String> {
+) -> Result<(Vec<ContainerListItem>, String), String> {
     let config = config_state.config.lock().await;
-    Ok((config.containers.clone(), config.active_container.clone()))
+    let list: Vec<ContainerListItem> = config.containers.iter().map(|(name, info)| {
+        ContainerListItem {
+            name: name.clone(),
+            description: info.description.clone(),
+            indexed_paths: info.indexed_paths.clone(),
+        }
+    }).collect();
+    Ok((list, config.active_container.clone()))
 }
 
 #[tauri::command]
 async fn create_container(
     name: String,
+    description: String,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
-    if config.containers.contains(&name) {
+    if config.containers.contains_key(&name) {
         return Err("Container already exists".to_string());
     }
-    config.containers.push(name.clone());
-    // Persist
-    drop(config); // unlock to save
+    config.containers.insert(name, ContainerInfo {
+        description,
+        indexed_paths: Vec::new(),
+    });
+    drop(config);
     config_state.save().await?;
     Ok(())
 }
@@ -111,17 +140,16 @@ async fn delete_container(
     {
         let mut config = config_state.config.lock().await;
         if name == "Default" {
-             return Err("Cannot delete Default container".to_string());
+            return Err("Cannot delete Default container".to_string());
         }
         if config.active_container == name {
-             config.active_container = "Default".to_string();
+            config.active_container = "Default".to_string();
         }
-        config.containers.retain(|c| c != &name);
-    } // drop lock
-    
+        config.containers.remove(&name);
+    }
+
     config_state.save().await?;
 
-    // Drop table
     let db = {
         let guard = db_state.lock().await;
         guard.db.clone()
@@ -138,7 +166,7 @@ async fn set_active_container(
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
-    if !config.containers.contains(&name) {
+    if !config.containers.contains_key(&name) {
         return Err("Container does not exist".to_string());
     }
     config.active_container = name;
@@ -154,10 +182,28 @@ async fn search(
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
-    // Get active container
-    let table_name = {
+    let (table_name, description) = {
         let config = config_state.config.lock().await;
-        get_table_name(&config.active_container)
+        let desc = config.containers.get(&config.active_container)
+            .map(|c| c.description.clone())
+            .unwrap_or_default();
+        (get_table_name(&config.active_container), desc)
+    };
+
+    let contextualized_query = if description.is_empty() {
+        query.clone()
+    } else {
+        format!("{}: {}", description, query)
+    };
+
+    let query_vector = {
+        let mut guard = model_state.lock().await;
+        if let Some(err) = &guard.init_error {
+            return Err(format!("Model init failed: {}", err));
+        }
+        let model = guard.model.as_mut().ok_or("Model is still loading...")?;
+        indexer::embed_query(model, &contextualized_query)
+            .map_err(|e| e.to_string())?
     };
 
     let db = {
@@ -165,24 +211,21 @@ async fn search(
         guard.db.clone()
     };
 
-    let mut guard = model_state.lock().await;
-    if let Some(err) = &guard.init_error {
-        return Err(format!("Model init failed: {}", err));
-    }
-    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
-    
-    let results = indexer::search_files(&db, &table_name, model, &query, 5)
+    let results = indexer::search_files(&db, &table_name, &query_vector, 50)
         .await
         .map_err(|e| e.to_string())?;
 
     Ok(results
         .into_iter()
-        .map(|(path, snippet, dist)| SearchResult { 
-            path, 
-            snippet, 
-            score: (1.0 - dist).max(0.0) * 100.0 
+        .map(|(path, snippet, cosine_dist)| {
+            let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
+            SearchResult {
+                path,
+                snippet,
+                score: similarity * 100.0,
+            }
         })
-        .filter(|r| r.score >= 55.0)
+        .filter(|r| r.score >= 40.0)
         .collect())
 }
 
@@ -199,6 +242,18 @@ async fn index_folder(
         get_table_name(&config.active_container)
     };
 
+    {
+        let mut config = config_state.config.lock().await;
+        let active = config.active_container.clone();
+        if let Some(info) = config.containers.get_mut(&active) {
+            if !info.indexed_paths.contains(&dir) {
+                info.indexed_paths.push(dir.clone());
+            }
+        }
+        drop(config);
+        config_state.save().await?;
+    }
+
     let db = {
         let guard = db_state.lock().await;
         guard.db.clone()
@@ -209,7 +264,7 @@ async fn index_folder(
         return Err(format!("Model init failed: {}", err));
     }
     let model = guard.model.as_mut().ok_or("Model is still loading...")?;
-    
+
     let app_handle = app.clone();
 
     let count = indexer::index_directory(&dir, &table_name, &db, model, move |path| {
@@ -294,7 +349,6 @@ pub fn run() {
                 }
             }
 
-            // --- System Tray Setup ---
             let show_i = MenuItem::with_id(app, "show", "Show Recall", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
@@ -302,15 +356,15 @@ pub fn run() {
             let _tray = TrayIconBuilder::with_id("tray")
                 .menu(&menu)
                 .icon(app.default_window_icon().unwrap().clone())
-                .show_menu_on_left_click(false) 
+                .show_menu_on_left_click(false)
                 .on_menu_event(move |app: &tauri::AppHandle, event: MenuEvent| {
                     match event.id().as_ref() {
                         "quit" => app.exit(0),
                         "show" => {
-                             if let Some(window) = app.get_webview_window("main") {
+                            if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.show();
                                 let _ = window.set_focus();
-                             }
+                            }
                         }
                         _ => {}
                     }
@@ -319,22 +373,59 @@ pub fn run() {
                     if let TrayIconEvent::Click { .. } = event {
                         let app = tray.app_handle();
                         if let Some(window) = app.get_webview_window("main") {
-                             if window.is_visible().unwrap_or(false) {
-                                 let _ = window.hide();
-                             } else {
-                                 let _ = window.show();
-                                 let _ = window.set_focus();
-                             }
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
                         }
                     }
                 })
                 .build(app)?;
-            // -------------------------
 
             let config_path = app_data.join("config.json");
-            let config = if config_path.exists() {
+            let config: Config = if config_path.exists() {
                 let content = fs::read_to_string(&config_path).unwrap_or_default();
-                serde_json::from_str(&content).unwrap_or_default()
+                match serde_json::from_str::<Config>(&content) {
+                    Ok(c) => c,
+                    Err(_) => {
+                        #[derive(Deserialize)]
+                        struct OldConfig {
+                            embedding_model: Option<String>,
+                            containers: Option<Vec<String>>,
+                            active_container: Option<String>,
+                        }
+                        let migrated = if let Ok(old) = serde_json::from_str::<OldConfig>(&content) {
+                            let mut containers = HashMap::new();
+                            if let Some(names) = old.containers {
+                                for name in names {
+                                    containers.insert(name, ContainerInfo {
+                                        description: String::new(),
+                                        indexed_paths: Vec::new(),
+                                    });
+                                }
+                            }
+                            if containers.is_empty() {
+                                containers.insert("Default".to_string(), ContainerInfo {
+                                    description: String::new(),
+                                    indexed_paths: Vec::new(),
+                                });
+                            }
+                            Config {
+                                embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Small".to_string()),
+                                active_container: old.active_container.unwrap_or_else(|| "Default".to_string()),
+                                containers,
+                            }
+                        } else {
+                            Config::default()
+                        };
+                        if let Ok(json) = serde_json::to_string_pretty(&migrated) {
+                            let _ = fs::write(&config_path, json);
+                        }
+                        migrated
+                    }
+                }
             } else {
                 let config = Config::default();
                 let content = serde_json::to_string_pretty(&config).unwrap();
@@ -343,14 +434,12 @@ pub fn run() {
             };
 
             let model_enum = get_embedding_model(&config.embedding_model);
-            
-            // Manage Config State
+
             app.manage(ConfigState {
                 config: Arc::new(Mutex::new(config)),
                 path: config_path,
             });
 
-            // Initialize with None
             let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None }));
             app.manage(model_state.clone());
             app.manage(Arc::new(Mutex::new(DbState { db, path: db_path })));
@@ -363,12 +452,11 @@ pub fn run() {
 
             let app_handle = app.handle().clone();
 
-            // Spawn background task to load model
             tauri::async_runtime::spawn(async move {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
                     let _ = writeln!(file, "Loading model to: {:?}", models_path);
                 }
-                
+
                 let mut attempts = 0;
                 let max_attempts = 3;
                 let mut last_error = None;
@@ -381,45 +469,42 @@ pub fn run() {
                                 let _ = writeln!(file, "Model loaded successfully");
                             }
                             let mut state = model_state.lock().await;
-                            // Store directly
                             state.model = Some(model);
                             state.init_error = None;
                             let _ = app_handle.emit("model-loaded", ());
-                            return; 
+                            return;
                         }
                         Err(e) => {
-                             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
                                 let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
-                             }
-                             last_error = Some(e);
-                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            }
+                            last_error = Some(e);
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                         }
                     }
                 }
 
                 if let Some(e) = last_error {
-                     let mut state = model_state.lock().await;
-                     state.init_error = Some(e.to_string());
-                     let _ = app_handle.emit("model-load-error", e.to_string());
+                    let mut state = model_state.lock().await;
+                    state.init_error = Some(e.to_string());
+                    let _ = app_handle.emit("model-load-error", e.to_string());
                 }
             });
 
-            // Cleanup legacy cache
             if let Ok(home_dir) = app.path().home_dir() {
-                 let _log_path_cleanup = app_data.join("recall.log");
-                 tauri::async_runtime::spawn(async move {
-                     let legacy_cache = home_dir.join(".fastembed_cache");
-                     if legacy_cache.exists() {
-                         let _ = fs::remove_dir_all(&legacy_cache);
-                     }
-                 });
+                tauri::async_runtime::spawn(async move {
+                    let legacy_cache = home_dir.join(".fastembed_cache");
+                    if legacy_cache.exists() {
+                        let _ = fs::remove_dir_all(&legacy_cache);
+                    }
+                });
             }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            search, 
-            index_folder, 
+            search,
+            index_folder,
             reset_index,
             get_containers,
             create_container,

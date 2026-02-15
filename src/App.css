@@ -214,6 +214,14 @@ body {
   flex-direction: column;
   padding: 12px;
   gap: 8px;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.sidebar.collapsed {
+  width: 48px;
+  padding: 12px 8px;
 }
 
 .sidebar-header {
@@ -288,6 +296,21 @@ body {
 .container-item.active .icon {
   opacity: 1;
   color: var(--color-fill-accent-default);
+}
+
+.indexed-paths {
+  padding: 2px 12px 4px 34px;
+}
+
+.indexed-path-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  opacity: 0.5;
+  line-height: 1.6;
+  overflow: hidden;
 }
 
 .main-content {

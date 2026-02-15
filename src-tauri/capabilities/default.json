@@ -1,5 +1,4 @@
 {
-  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
@@ -7,16 +6,10 @@
   ],
   "permissions": [
     "core:default",
-    "shell:allow-open",
+    "opener:allow-open-path",
     "dialog:allow-open",
     "dialog:allow-save",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "**"
-        }
-      ]
-    }
+    "dialog:allow-ask",
+    "dialog:allow-message"
   ]
 }
