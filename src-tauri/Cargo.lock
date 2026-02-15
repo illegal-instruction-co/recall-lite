@@ -6695,7 +6695,7 @@ dependencies = [
 
 [[package]]
 name = "recall-lite"
-version = "1.0.4"
+version = "1.0.5"
 dependencies = [
  "anyhow",
  "arrow-array",

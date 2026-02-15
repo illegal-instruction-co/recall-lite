@@ -201,24 +201,44 @@ pub fn run() {
                     let _ = writeln!(file, "Loading model to: {:?}", models_path);
                 }
                 
-                match indexer::load_model(model_enum, models_path) {
-                    Ok(model) => {
-                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                            let _ = writeln!(file, "Model loaded successfully");
+                let mut attempts = 0;
+                let max_attempts = 3;
+                let mut last_error = None;
+
+                while attempts < max_attempts {
+                    attempts += 1;
+                    if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                        let _ = writeln!(file, "Attempt {}/{}...", attempts, max_attempts);
+                    }
+
+                    // Clone arguments because load_model takes ownership
+                    match indexer::load_model(model_enum.clone(), models_path.clone()) {
+                        Ok(model) => {
+                            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                                let _ = writeln!(file, "Model loaded successfully");
+                            }
+                            let mut state = model_state.lock().await;
+                            state.model = Some(model);
+                            state.init_error = None;
+                            let _ = app_handle.emit("model-loaded", ());
+                            return; // Success, exit task
                         }
-                        let mut state = model_state.lock().await;
-                        state.model = Some(model);
-                        state.init_error = None;
-                        let _ = app_handle.emit("model-loaded", ());
+                        Err(e) => {
+                             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
+                                let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
+                             }
+                             last_error = Some(e);
+                             // Wait 2 seconds before retrying
+                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
                     }
-                    Err(e) => {
-                         if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                            let _ = writeln!(file, "Model load failed: {}", e);
-                         }
-                         let mut state = model_state.lock().await;
-                         state.init_error = Some(e.to_string());
-                         let _ = app_handle.emit("model-load-error", e.to_string());
-                    }
+                }
+
+                // If loop finishes, all attempts failed
+                if let Some(e) = last_error {
+                     let mut state = model_state.lock().await;
+                     state.init_error = Some(e.to_string());
+                     let _ = app_handle.emit("model-load-error", e.to_string());
                 }
             });
 
