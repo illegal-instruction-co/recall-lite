@@ -1,0 +1,34 @@
+[package]
+name = "recall-lite"
+version = "0.1.0"
+description = "Local semantic file search"
+authors = ["machinetherapist"]
+edition = "2021"
+
+[lib]
+name = "recall_lite_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+lancedb = "0.26"
+arrow-array = "57"
+arrow-schema = "57"
+fastembed = "5"
+notify = "7"
+pdf-extract = "0.10"
+walkdir = "2"
+futures = { version = "0.3", features = ["executor"] }
+anyhow = "1"
+tauri-plugin-global-shortcut = "2.3.1"
+image = "0.24"
+windows = { version = "0.58", features = ["Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Storage", "Globalization"] }
+window-vibrancy = "0.7.1"
