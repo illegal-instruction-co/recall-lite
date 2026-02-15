@@ -1,9 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { List, type ListImperativeAPI } from "react-window";
-import { AutoSizer } from "react-virtualized-auto-sizer";
-const AutoSizerAny = AutoSizer as any;
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-shell";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { open as openDialog, ask } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -99,6 +97,17 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<ListImperativeAPI>(null);
+  const [listDims, setListDims] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!resultsRef.current) return;
+    const observer = new ResizeObserver(entries => {
+      const { width, height } = entries[0].contentRect;
+      setListDims({ width, height });
+    });
+    observer.observe(resultsRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     fetchContainers();
@@ -282,7 +291,7 @@ function App() {
 
   async function handleOpenFile(path: string) {
     try {
-      await open(path);
+      await openPath(path);
     } catch (e) {
       console.error("Failed to open file:", path, e);
       setStatus(`Failed to open: ${String(e)}`);
@@ -376,23 +385,16 @@ function App() {
             </div>
           )}
 
-          {results.length > 0 && (
-            <AutoSizerAny>
-              {({ height, width }: { height: number; width: number }) => {
-                console.log("AutoSizer dims:", width, height);
-                return (
-                  <List<RowData>
-                    listRef={listRef}
-                    style={{ width, height }}
-                    rowCount={results.length}
-                    rowHeight={78}
-                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
-                    className="result-list-virtualized"
-                    rowComponent={Row}
-                  />
-                )
-              }}
-            </AutoSizerAny>
+          {results.length > 0 && listDims.height > 0 && (
+            <List<RowData>
+              listRef={listRef}
+              style={{ width: listDims.width, height: listDims.height }}
+              rowCount={results.length}
+              rowHeight={78}
+              rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
+              className="result-list-virtualized"
+              rowComponent={Row}
+            />
           )}
         </div>
 

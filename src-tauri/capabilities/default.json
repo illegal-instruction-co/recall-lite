@@ -7,15 +7,16 @@
   ],
   "permissions": [
     "core:default",
+    "shell:allow-open",
+    "dialog:allow-open",
+    "dialog:allow-save",
     {
-      "identifier": "shell:allow-open",
+      "identifier": "opener:allow-open-path",
       "allow": [
         {
-          "url": ".*"
+          "path": "**"
         }
       ]
-    },
-    "dialog:allow-open",
-    "dialog:allow-save"
+    }
   ]
 }

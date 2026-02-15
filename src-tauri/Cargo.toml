@@ -31,6 +31,7 @@ mimalloc = { version = "0.1", default-features = false }
 tauri-plugin-global-shortcut = "2"
 
 window-vibrancy = "0.7.1"
+tauri-plugin-opener = "2.5.3"
 
 [profile.release]
 opt-level = "s"
