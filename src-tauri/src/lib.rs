@@ -37,6 +37,7 @@ struct DbState {
 
 struct ModelState {
     model: Option<fastembed::TextEmbedding>,
+    init_error: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -54,6 +55,11 @@ async fn search(
 ) -> Result<Vec<SearchResult>, String> {
     let db = db_state.lock().await;
     let mut model_guard = model_state.lock().await;
+
+    if let Some(err) = &model_guard.init_error {
+        return Err(format!("Model init failed: {}", err));
+    }
+
     let model = model_guard.model.as_mut().ok_or("Model is still loading...")?;
     
     let results = indexer::search_files(&db.db, model, &query, 5)
@@ -80,6 +86,11 @@ async fn index_folder(
 ) -> Result<String, String> {
     let db = db_state.lock().await;
     let mut model_guard = model_state.lock().await;
+
+    if let Some(err) = &model_guard.init_error {
+        return Err(format!("Model init failed: {}", err));
+    }
+
     let model = model_guard.model.as_mut().ok_or("Model is still loading...")?;
     
     let app_handle = app.clone();
@@ -171,7 +182,7 @@ pub fn run() {
             let model_enum = get_embedding_model(&config.embedding_model);
             
             // Initialize with None
-            let model_state = Arc::new(Mutex::new(ModelState { model: None }));
+            let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None }));
             app.manage(model_state.clone());
             app.manage(Arc::new(Mutex::new(DbState { db, path: db_path })));
 
@@ -181,9 +192,11 @@ pub fn run() {
                     Ok(model) => {
                         let mut state = model_state.lock().await;
                         state.model = Some(model);
+                        state.init_error = None;
                     }
-                    Err(_) => {
-                        // Silent failure for production
+                    Err(e) => {
+                         let mut state = model_state.lock().await;
+                         state.init_error = Some(e.to_string());
                     }
                 }
             });
