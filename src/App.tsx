@@ -2,12 +2,14 @@ import { useRef, useEffect, useState } from "react";
 import { List, type ListImperativeAPI } from "react-window";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { open as openDialog, ask } from "@tauri-apps/plugin-dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import {
   FileText, FileCode, FileJson, Image as ImageIcon, File,
-  Loader2, FolderPlus, Search, Box, Plus, Trash2
+  Loader2, FolderPlus, Search, Box, Plus, Trash2, FolderOpen,
+  PanelLeftClose, PanelLeftOpen
 } from "lucide-react";
+import { useModal, ModalProvider } from "./Modal";
 import "./App.css";
 
 interface SearchResult {
@@ -56,7 +58,7 @@ const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpe
         type="button"
         key={result.path}
         data-active={isSelected}
-        onClick={() => { setSelectedIndex(index); void handleOpenFile(result.path); }}
+        onClick={() => { setSelectedIndex(index); handleOpenFile(result.path); }}
         className="result-item w-full text-left flex items-start gap-3 cursor-default outline-none select-none group h-full"
       >
         <div className="pt-0.5 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
@@ -83,6 +85,12 @@ const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpe
   );
 };
 
+interface ContainerItem {
+  name: string;
+  description: string;
+  indexed_paths: string[];
+}
+
 function App() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -90,9 +98,10 @@ function App() {
   const [status, setStatus] = useState("");
   const [isIndexing, setIsIndexing] = useState(false);
 
-  // Container State
-  const [containers, setContainers] = useState<string[]>([]);
+  const [containers, setContainers] = useState<ContainerItem[]>([]);
   const [activeContainer, setActiveContainer] = useState("Default");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const modal = useModal();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
@@ -115,7 +124,7 @@ function App() {
 
   async function fetchContainers() {
     try {
-      const [list, active] = await invoke<[string[], string]>("get_containers");
+      const [list, active] = await invoke<[ContainerItem[], string]>("get_containers");
       setContainers(list);
       setActiveContainer(active);
     } catch (e) {
@@ -124,34 +133,47 @@ function App() {
   }
 
   async function handleCreateContainer() {
-    const name = await prompt("Enter container name (e.g., 'Work', 'Gaming'):");
-    if (!name?.trim()) return;
+    const result = await modal.prompt({
+      title: "New Container",
+      icon: "info",
+      fields: [
+        { key: "name", label: "Name", placeholder: "Work, Gaming, Research..." },
+        { key: "description", label: "Description (AI Context)", placeholder: "accounting files for acme corp" },
+      ],
+      confirmText: "Create",
+    });
+
+    if (!result.confirmed || !result.values?.name?.trim()) return;
 
     try {
-      await invoke("create_container", { name: name.trim() });
+      await invoke("create_container", {
+        name: result.values.name.trim(),
+        description: (result.values.description || "").trim(),
+      });
       await fetchContainers();
     } catch (e) {
-      alert(String(e));
+      await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: "OK" });
     }
   }
 
   async function handleDeleteContainer() {
-    if (activeContainer === "Default") {
-      alert("Cannot delete Default container.");
-      return;
-    }
-    const yes = await ask(`Are you sure you want to delete '${activeContainer}'? All indexed data will be lost forever.`, {
+    if (activeContainer === "Default") return;
+
+    const result = await modal.confirm({
       title: "Delete Container",
-      kind: "warning"
+      message: `Are you sure you want to delete '${activeContainer}'? All indexed data will be lost forever.`,
+      icon: "warning",
+      confirmText: "Delete",
+      confirmVariant: "danger",
     });
 
-    if (yes) {
+    if (result.confirmed) {
       try {
         await invoke("delete_container", { name: activeContainer });
         await fetchContainers();
-        setResults([]); // Clear results as container is gone
+        setResults([]);
       } catch (e) {
-        alert(String(e));
+        await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: "OK" });
       }
     }
   }
@@ -170,8 +192,7 @@ function App() {
     }
   }
 
-  // Helper prompt using browser API for simplicity as requested
-  const prompt = (msg: string) => Promise.resolve(globalThis.prompt(msg));
+
 
 
   useEffect(() => {
@@ -282,6 +303,7 @@ function App() {
         const msg = await invoke<string>("index_folder", { dir: selected });
         setStatus(msg);
         setIsIndexing(false);
+        await fetchContainers();
       }
     } catch (err) {
       setStatus(String(err));
@@ -302,120 +324,150 @@ function App() {
 
 
   return (
-    <div className="app-container">
+    <>
+      <div className="app-container">
 
-      {/* Sidebar */}
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <span className="sidebar-title">Containers</span>
-          <button className="sidebar-btn" onClick={handleCreateContainer} title="Create Container">
-            <Plus size={14} />
-          </button>
-        </div>
-        <div className="container-list">
-          {containers.map(c => (
-            <button
-              key={c}
-              type="button"
-              className={`container-item w-full text-left ${activeContainer === c ? 'active' : ''}`}
-              onClick={() => handleSwitchContainer(c)}
-            >
-              <Box size={14} className="icon" />
-              <span className="truncate flex-1">{c}</span>
+        {/* Sidebar */}
+        <div className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
+          <div className="sidebar-header">
+            <button className="sidebar-btn" onClick={() => setSidebarOpen(prev => !prev)} title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+              {sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
             </button>
-          ))}
-        </div>
-        {activeContainer !== "Default" && (
-          <button
-            className="flex items-center justify-center gap-2 p-2 text-[11px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
-            onClick={handleDeleteContainer}
-          >
-            <Trash2 size={12} /> Delete Container
-          </button>
-        )}
-      </div>
-
-      {/* Main Content */}
-      <div className="main-content">
-        {/* Search Header */}
-        <div className="search-wrapper shrink-0">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[--color-text-tertiary] pointer-events-none" size={18} />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Search in ${activeContainer}...`}
-              className="search-input"
-              autoFocus
-            />
-            <button
-              onClick={handlePickFolder}
-              className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-[--color-control-fill-secondary] text-[--color-text-secondary] transition-colors"
-              title={`Index Folder into ${activeContainer} (Ctrl+O)`}
-            >
-              {isIndexing ? <Loader2 className="animate-spin" size={18} /> : <FolderPlus size={18} />}
-            </button>
-          </div>
-        </div>
-
-        {/* Results Area */}
-        <div className="flex-1 overflow-hidden min-h-0 mt-2 pb-3" ref={resultsRef}>
-          {results.length === 0 && !query && (
-            <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
-              <Box size={40} className="mb-4 opacity-40 text-[--color-fill-accent-default]" strokeWidth={1} />
-              <p className="text-body font-medium">{activeContainer}</p>
-              <p className="text-caption mt-1">Container Active</p>
-
-              <div className="mt-8 flex flex-col gap-2 items-center">
-                <p className="text-[10px] uppercase tracking-wider opacity-60">Shortcuts</p>
-                <div className="flex gap-4 opacity-50 text-xs font-mono">
-                  <span>Ctrl + O : Index</span>
-                  <span>Alt + Space : Toggle</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {results.length === 0 && query && (
-            <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
-              <p className="text-body font-medium">No results found</p>
-              <p className="text-caption mt-1">in {activeContainer}</p>
-            </div>
-          )}
-
-          {results.length > 0 && listDims.height > 0 && (
-            <List<RowData>
-              listRef={listRef}
-              style={{ width: listDims.width, height: listDims.height }}
-              rowCount={results.length}
-              rowHeight={78}
-              rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile }}
-              className="result-list-virtualized"
-              rowComponent={Row}
-            />
-          )}
-        </div>
-
-        {/* Status Bar Footer */}
-        <div className="status-bar shrink-0 h-8 px-6 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <span className="font-semibold text-[--color-fill-accent-default] opacity-90">{activeContainer}</span>
-            <span className="w-px h-3 bg-[--color-stroke-divider-default]"></span>
-            {status ? (
-              <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
-            ) : (
-              <span>{results.length} items</span>
+            {sidebarOpen && (
+              <>
+                <span className="sidebar-title flex-1">Containers</span>
+                <button className="sidebar-btn" onClick={handleCreateContainer} title="Create Container">
+                  <Plus size={14} />
+                </button>
+              </>
             )}
           </div>
-          <div className="flex items-center gap-4 opacity-80">
-            <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↑↓</span> to navigate</span>
-            <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1 rounded">↵</span> to open</span>
+          {sidebarOpen && (
+            <>
+              <div className="container-list">
+                {containers.map(c => (
+                  <div key={c.name} className="container-item-wrapper">
+                    <button
+                      type="button"
+                      className={`container-item w-full text-left ${activeContainer === c.name ? 'active' : ''}`}
+                      onClick={() => handleSwitchContainer(c.name)}
+                    >
+                      <Box size={14} className="icon" />
+                      <div className="flex-1 min-w-0">
+                        <span className="truncate block">{c.name}</span>
+                        {c.description && (
+                          <span className="truncate block text-[10px] opacity-40 mt-0.5">{c.description}</span>
+                        )}
+                      </div>
+                    </button>
+                    {activeContainer === c.name && c.indexed_paths.length > 0 && (
+                      <div className="indexed-paths">
+                        {c.indexed_paths.map(p => (
+                          <div key={p} className="indexed-path-item">
+                            <FolderOpen size={10} className="shrink-0 opacity-40" />
+                            <span className="truncate">{p}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {activeContainer !== "Default" && (
+                <button
+                  className="flex items-center justify-center gap-2 p-2 text-[11px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                  onClick={handleDeleteContainer}
+                >
+                  <Trash2 size={12} /> Delete Container
+                </button>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Main Content */}
+        <div className="main-content">
+          {/* Search Header */}
+          <div className="search-wrapper shrink-0">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[--color-text-tertiary] pointer-events-none" size={18} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Search in ${activeContainer}...`}
+                className="search-input"
+                autoFocus
+              />
+              <button
+                onClick={handlePickFolder}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-[--color-control-fill-secondary] text-[--color-text-secondary] transition-colors"
+                title={`Index Folder into ${activeContainer} (Ctrl+O)`}
+              >
+                {isIndexing ? <Loader2 className="animate-spin" size={18} /> : <FolderPlus size={18} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Results Area */}
+          <div className="flex-1 overflow-hidden min-h-0 mt-2 pb-3" ref={resultsRef}>
+            {results.length === 0 && !query && (
+              <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
+                <Box size={40} className="mb-4 opacity-40 text-[--color-fill-accent-default]" strokeWidth={1} />
+                <p className="text-body font-medium">{activeContainer}</p>
+                <p className="text-caption mt-1">Container Active</p>
+
+                <div className="mt-8 flex flex-col gap-2 items-center">
+                  <p className="text-[10px] uppercase tracking-wider opacity-60">Shortcuts</p>
+                  <div className="flex gap-4 opacity-50 text-xs font-mono">
+                    <span>Ctrl + O : Index</span>
+                    <span>Alt + Space : Toggle</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {results.length === 0 && query && (
+              <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
+                <p className="text-body font-medium">No results found</p>
+                <p className="text-caption mt-1">in {activeContainer}</p>
+              </div>
+            )}
+
+            {results.length > 0 && listDims.height > 0 && (
+              <List<RowData>
+                listRef={listRef}
+                style={{ width: listDims.width, height: listDims.height }}
+                rowCount={results.length}
+                rowHeight={78}
+                rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile: (p: string) => { handleOpenFile(p).catch(() => { }); } }}
+                className="result-list-virtualized"
+                rowComponent={Row}
+              />
+            )}
+          </div>
+
+          {/* Status Bar Footer */}
+          <div className="status-bar shrink-0 h-8 px-6 flex items-center justify-between text-[11px] select-none text-[--color-text-secondary]">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <span className="font-semibold text-[--color-fill-accent-default] opacity-90">{activeContainer}</span>
+              <span className="w-px h-3 bg-[--color-stroke-divider-default]"></span>
+              {status ? (
+                <span className="flex items-center gap-2 truncate"><Loader2 className="animate-spin" size={10} /> {status}</span>
+              ) : (
+                <span>{results.length} items</span>
+              )}
+            </div>
+            <div className="flex items-center gap-4 opacity-80 px-2">
+              <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↑↓</span> to navigate</span>
+              <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↵</span> to open</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+      <ModalProvider />
+    </>
   );
 }
 
