@@ -1,5 +1,7 @@
 # Recall Lite (local-mind)
 
+<img width="1698" height="1279" alt="image" src="https://github.com/user-attachments/assets/c5510d38-4a86-420f-91c2-6cc674e7c4e1" />
+
 Windows search sucks. Copilot is creepy. I needed something that finds my sh*t without sending my screen to the cloud.
 
 So I built this.
