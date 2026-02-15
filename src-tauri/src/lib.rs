@@ -222,6 +222,20 @@ pub fn run() {
                 }
             });
 
+            // Cleanup legacy cache
+            if let Ok(home_dir) = app.path().home_dir() {
+                 let log_path_cleanup = app_data.join("recall.log");
+                 tauri::async_runtime::spawn(async move {
+                     let legacy_cache = home_dir.join(".fastembed_cache");
+                     if legacy_cache.exists() {
+                         if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path_cleanup) {
+                             let _ = writeln!(file, "Removing legacy cache: {:?}", legacy_cache);
+                         }
+                         let _ = fs::remove_dir_all(&legacy_cache);
+                     }
+                 });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![search, index_folder, reset_index])
