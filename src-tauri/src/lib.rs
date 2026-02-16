@@ -83,6 +83,11 @@ struct ModelState {
     init_error: Option<String>,
 }
 
+struct RerankerState {
+    reranker: Option<fastembed::TextRerank>,
+    init_error: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 pub struct SearchResult {
     path: String,
@@ -180,6 +185,7 @@ async fn search(
     query: String,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    reranker_state: tauri::State<'_, Arc<Mutex<RerankerState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
     let table_name = {
@@ -202,22 +208,59 @@ async fn search(
         guard.db.clone()
     };
 
-    let results = indexer::search_files(&db, &table_name, &query_vector, 50)
+    let vector_results = indexer::search_files(&db, &table_name, &query_vector, 30)
         .await
         .map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<SearchResult> = results
-        .into_iter()
-        .filter_map(|(path, snippet, cosine_dist)| {
-            let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
-            let calibrated = similarity.powi(3) * 100.0;
-            if calibrated >= 60.0 {
-                Some(SearchResult { path, snippet, score: calibrated })
-            } else {
-                None
+    let fts_results = indexer::search_fts(&db, &table_name, &query, 20)
+        .await
+        .unwrap_or_default();
+
+    let merged = if fts_results.is_empty() {
+        vector_results
+    } else {
+        indexer::hybrid_merge(&vector_results, &fts_results, 30)
+    };
+
+    let final_results = {
+        let mut guard = reranker_state.lock().await;
+        if let Some(reranker) = guard.reranker.as_mut() {
+            match indexer::rerank_results(reranker, &query, &merged) {
+                Ok(reranked) => reranked,
+                Err(_) => merged,
             }
-        })
-        .collect();
+        } else {
+            merged
+        }
+    };
+
+    let mut scored: Vec<SearchResult> = if final_results.first().map(|(_, _, s)| *s > 1.0 || *s < -1.0).unwrap_or(false) {
+        final_results
+            .into_iter()
+            .filter_map(|(path, snippet, raw_score)| {
+                let sigmoid = 1.0 / (1.0 + (-raw_score).exp());
+                let pct = sigmoid * 100.0;
+                if pct >= 55.0 {
+                    Some(SearchResult { path, snippet, score: pct })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        final_results
+            .into_iter()
+            .filter_map(|(path, snippet, cosine_dist)| {
+                let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
+                let calibrated = similarity.powi(3) * 100.0;
+                if calibrated >= 60.0 {
+                    Some(SearchResult { path, snippet, score: calibrated })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
 
     scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -496,6 +539,9 @@ pub fn run() {
 
             let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None }));
             app.manage(model_state.clone());
+
+            let reranker_state = Arc::new(Mutex::new(RerankerState { reranker: None, init_error: None }));
+            app.manage(reranker_state.clone());
             app.manage(Arc::new(Mutex::new(DbState { db, path: db_path })));
 
             let models_path = app_data.join("models");
@@ -505,6 +551,9 @@ pub fn run() {
             let _ = fs::write(&log_path, "Starting model load...\n");
 
             let app_handle = app.handle().clone();
+
+            let reranker_models_path = models_path.clone();
+            let reranker_log = log_path.clone();
 
             tauri::async_runtime::spawn(async move {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -526,7 +575,7 @@ pub fn run() {
                             state.model = Some(model);
                             state.init_error = None;
                             let _ = app_handle.emit("model-loaded", ());
-                            return;
+                            break;
                         }
                         Err(e) => {
                             if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -542,6 +591,28 @@ pub fn run() {
                     let mut state = model_state.lock().await;
                     state.init_error = Some(e.to_string());
                     let _ = app_handle.emit("model-load-error", e.to_string());
+                }
+            });
+
+            tauri::async_runtime::spawn(async move {
+                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
+                    let _ = writeln!(file, "Loading reranker model...");
+                }
+                match indexer::load_reranker(reranker_models_path) {
+                    Ok(reranker) => {
+                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
+                            let _ = writeln!(file, "Reranker loaded successfully");
+                        }
+                        let mut state = reranker_state.lock().await;
+                        state.reranker = Some(reranker);
+                    }
+                    Err(e) => {
+                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
+                            let _ = writeln!(file, "Reranker load failed (non-fatal): {}", e);
+                        }
+                        let mut state = reranker_state.lock().await;
+                        state.init_error = Some(e.to_string());
+                    }
                 }
             });
 
