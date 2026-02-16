@@ -6,6 +6,7 @@ So I built this.
 
 ![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
 
+![Search](https://github.com/user-attachments/assets/98407df3-1984-4f3d-9cd5-21cbfdc4cb85)
 
 ## What is this?
 It's a **local-first** semantic search engine.
