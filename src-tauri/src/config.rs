@@ -95,9 +95,10 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                         indexed_paths: Vec::new(),
                     });
                 }
+                let default_active = containers.keys().next().cloned().unwrap_or_else(|| "Default".to_string());
                 Config {
                     embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
-                    active_container: old.active_container.unwrap_or_else(|| "Default".to_string()),
+                    active_container: old.active_container.unwrap_or(default_active),
                     containers,
                 }
             } else {
