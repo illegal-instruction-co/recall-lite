@@ -42,6 +42,7 @@ tauri-plugin-global-shortcut = "2"
 window-vibrancy = "0.7.1"
 rmcp = { version = "0.15", features = ["server", "transport-io", "schemars"] }
 schemars = "0.8"
+notify-debouncer-full = "0.5"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

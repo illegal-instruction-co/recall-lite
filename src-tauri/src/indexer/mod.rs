@@ -259,3 +259,89 @@ where
 
     Ok(files_indexed)
 }
+
+pub async fn index_single_file(
+    file_path: &std::path::Path,
+    table_name: &str,
+    db: &Connection,
+    model_state: &Arc<Mutex<ModelState>>,
+) -> Result<bool> {
+    if !file_path.is_file() {
+        return Ok(false);
+    }
+
+    let dim = get_model_dim(model_state).await?;
+    let table = db::get_or_create_table(db, table_name, dim).await?;
+    let path_str = file_path.to_string_lossy().to_string();
+    let mtime = file_io::get_file_mtime(file_path);
+
+    let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
+    if let Some(&existing_mtime) = existing_mtimes.get(&path_str) {
+        if existing_mtime == mtime {
+            return Ok(false);
+        }
+    }
+
+    let safe_path = path_str.replace('\'', "''");
+    let _ = table.delete(&format!("path = '{}'", safe_path)).await;
+
+    let ext = file_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let text = if ocr::is_image_extension(&ext) {
+        file_io::read_file_content_with_ocr(file_path)
+    } else {
+        file_io::read_file_content(file_path)
+    };
+
+    let text = match text {
+        Some(t) if !t.trim().is_empty() => t,
+        _ => return Ok(false),
+    };
+
+    let chunks = chunking::semantic_chunk(&text, &ext);
+    if chunks.is_empty() {
+        return Ok(false);
+    }
+
+    let texts: Vec<String> = chunks.clone();
+    let embeddings = embed_batch(model_state, texts).await?;
+
+    let records: Vec<db::Record> = chunks
+        .into_iter()
+        .zip(embeddings)
+        .map(|(content, vector)| db::Record {
+            path: path_str.clone(),
+            content,
+            vector,
+            mtime,
+        })
+        .collect();
+
+    let batch = db::create_record_batch(records)?;
+    let schema = batch.schema();
+    table
+        .add(RecordBatchIterator::new(vec![Ok(batch)], schema))
+        .execute()
+        .await?;
+
+    Ok(true)
+}
+
+pub async fn delete_file_from_index(
+    file_path: &str,
+    table_name: &str,
+    db: &Connection,
+) -> Result<()> {
+    let dim = 768;
+    let table = match db::get_or_create_table(db, table_name, dim).await {
+        Ok(t) => t,
+        Err(_) => return Ok(()),
+    };
+    let safe_path = file_path.replace('\'', "''");
+    let _ = table.delete(&format!("path = '{}'", safe_path)).await;
+    Ok(())
+}

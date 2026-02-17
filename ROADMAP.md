@@ -1,7 +1,7 @@
 # roadmap
 
 - ~~**MCP server**~~ done -- `recall-mcp` binary exposes search as tools over stdio. any MCP client (cursor, claude desktop, copilot) can use it out of the box
-- **file watcher** -- the fact that you have to manually re-index after editing files is embarrassing. `notify` crate, watch for changes, auto re-embed only the diff. should've been there from day 1. also `reindex_all` nukes the entire table and rebuilds from scratch which is insane, needs to do delta like `index_folder` does
+- ~~**file watcher**~~ done -- `notify` crate, OS-level events (zero CPU idle), 500ms debounce. auto re-embeds changed files, removes deleted ones. `reindex_all` now does delta instead of nuking the table like a maniac
 - **agentic search** -- local LLM that can grep --> read --> reason --> answer in a loop. notebooklm but private
 - **linux / mac** -- need cross-platform alternatives for OCR and mica backdrop
 - **more file types** -- always
