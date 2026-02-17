@@ -1,5 +1,6 @@
 import { Loader2 } from "lucide-react";
 import type { IndexingProgress } from "../types";
+import { useLocale } from "../i18n";
 
 interface StatusBarProps {
     status: string;
@@ -13,6 +14,8 @@ interface StatusBarProps {
 export default function StatusBar({
     status, isIndexing, indexProgress, activeContainer, indexedFolderCount, resultCount,
 }: StatusBarProps) {
+    const { t } = useLocale();
+
     const pct = indexProgress && indexProgress.total > 0
         ? Math.round((indexProgress.current / indexProgress.total) * 100)
         : 0;
@@ -40,12 +43,12 @@ export default function StatusBar({
                             }
                         </span>
                     ) : (
-                        <span>Indexed {indexedFolderCount} folders · {resultCount} results</span>
+                        <span>{t("status_indexed_folders", { count: String(indexedFolderCount), results: String(resultCount) })}</span>
                     )}
                 </div>
                 <div className="flex items-center gap-4 opacity-80 px-2">
-                    <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↑↓</span> to navigate</span>
-                    <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↵</span> to open</span>
+                    <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↑↓</span> {t("results_navigate")}</span>
+                    <span className="flex items-center gap-1.5"><span className="font-mono text-[10px] bg-[--color-control-fill-secondary] px-1.5 py-0.5 rounded">↵</span> {t("results_open")}</span>
                 </div>
             </div>
         </div>

@@ -4,6 +4,7 @@ import {
     FileText, FileCode, FileJson, Image as ImageIcon, File, Box,
 } from "lucide-react";
 import type { SearchResult } from "../types";
+import { useLocale } from "../i18n";
 
 function getScoreColor(score: number): string {
     if (score > 80) return "bg-green-500/10 text-green-400";
@@ -33,9 +34,10 @@ interface RowData {
     selectedIndex: number;
     setSelectedIndex: (index: number) => void;
     handleOpenFile: (path: string) => void;
+    noPreviewText: string;
 }
 
-const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpenFile }: { index: number; style: React.CSSProperties } & RowData) => {
+const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpenFile, noPreviewText }: { index: number; style: React.CSSProperties } & RowData) => {
     const result = results[index];
     const isSelected = index === selectedIndex;
 
@@ -61,7 +63,7 @@ const Row = ({ index, style, results, selectedIndex, setSelectedIndex, handleOpe
                         </span>
                     </div>
                     <div className="truncate text-caption mt-0.5 opacity-60">
-                        {result.snippet || <span className="italic opacity-50">No preview available</span>}
+                        {result.snippet || <span className="italic opacity-50">{noPreviewText}</span>}
                     </div>
                     <div className="truncate text-[10px] opacity-40 mt-0.5 font-mono">
                         {result.path}
@@ -85,6 +87,7 @@ interface ResultsListProps {
 export default function ResultsList({
     results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, listRef,
 }: ResultsListProps) {
+    const { t } = useLocale();
     const containerRef = useRef<HTMLDivElement>(null);
     const [dims, setDims] = useState({ width: 0, height: 0 });
 
@@ -110,13 +113,13 @@ export default function ResultsList({
                 <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
                     <Box size={40} className="mb-4 opacity-40 text-[--color-fill-accent-default]" strokeWidth={1} />
                     <p className="text-body font-medium">{activeContainer}</p>
-                    <p className="text-caption mt-1">Container Active</p>
+                    <p className="text-caption mt-1">{t("results_container_active")}</p>
 
                     <div className="mt-8 flex flex-col gap-2 items-center">
-                        <p className="text-[10px] uppercase tracking-wider opacity-60">Shortcuts</p>
+                        <p className="text-[10px] uppercase tracking-wider opacity-60">{t("results_shortcuts")}</p>
                         <div className="flex gap-4 opacity-50 text-xs font-mono">
-                            <span>Ctrl + O : Index</span>
-                            <span>Alt + Space : Toggle</span>
+                            <span>{t("results_shortcut_index")}</span>
+                            <span>{t("results_shortcut_toggle")}</span>
                         </div>
                     </div>
                 </div>
@@ -124,8 +127,8 @@ export default function ResultsList({
 
             {results.length === 0 && query && (
                 <div className="h-full flex flex-col items-center justify-center text-[--color-text-muted] select-none opacity-60">
-                    <p className="text-body font-medium">No results found</p>
-                    <p className="text-caption mt-1">in {activeContainer}</p>
+                    <p className="text-body font-medium">{t("results_no_results")}</p>
+                    <p className="text-caption mt-1">{t("results_in_container", { container: activeContainer })}</p>
                 </div>
             )}
 
@@ -135,7 +138,7 @@ export default function ResultsList({
                     style={{ width: dims.width, height: dims.height }}
                     rowCount={results.length}
                     rowHeight={78}
-                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile: (p: string) => { onOpenFile(p); } }}
+                    rowProps={{ results, selectedIndex, setSelectedIndex, handleOpenFile: (p: string) => { onOpenFile(p); }, noPreviewText: t("results_no_preview") }}
                     className="result-list-virtualized"
                     rowComponent={Row}
                 />

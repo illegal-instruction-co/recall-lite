@@ -3,6 +3,7 @@ import {
     PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import type { ContainerItem } from "../types";
+import { useLocale } from "../i18n";
 
 interface SidebarProps {
     containers: ContainerItem[];
@@ -21,16 +22,18 @@ export default function Sidebar({
     onToggleSidebar, onSwitchContainer, onCreateContainer,
     onDeleteContainer, onReindexAll,
 }: SidebarProps) {
+    const { t } = useLocale();
+
     return (
         <div className={`sidebar ${sidebarOpen ? '' : 'collapsed'}`}>
             <div className="sidebar-header">
-                <button className="sidebar-btn" onClick={onToggleSidebar} title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}>
+                <button className="sidebar-btn" onClick={onToggleSidebar} title={sidebarOpen ? t('sidebar_collapse') : t('sidebar_expand')}>
                     {sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeftOpen size={14} />}
                 </button>
                 {sidebarOpen && (
                     <>
-                        <span className="sidebar-title flex-1">Containers</span>
-                        <button className="sidebar-btn" onClick={onCreateContainer} title="Create Container">
+                        <span className="sidebar-title flex-1">{t('sidebar_title')}</span>
+                        <button className="sidebar-btn" onClick={onCreateContainer} title={t('sidebar_create')}>
                             <Plus size={14} />
                         </button>
                     </>
@@ -58,7 +61,7 @@ export default function Sidebar({
                                     <div className="indexed-paths-section">
                                         <div className="indexed-paths-header">
                                             <Folder size={10} className="opacity-40" />
-                                            <span>Indexed Folders</span>
+                                            <span>{t('sidebar_indexed_folders')}</span>
                                         </div>
                                         {c.indexed_paths.length > 0 ? (
                                             <>
@@ -74,15 +77,15 @@ export default function Sidebar({
                                                     className="reindex-btn"
                                                     onClick={onReindexAll}
                                                     disabled={isIndexing}
-                                                    title="Re-index all folders with improved embeddings"
+                                                    title={t('sidebar_rebuild_tooltip')}
                                                 >
                                                     <RefreshCw size={10} className={isIndexing ? 'animate-spin' : ''} />
-                                                    <span>Rebuild Index</span>
+                                                    <span>{t('sidebar_rebuild')}</span>
                                                 </button>
                                             </>
                                         ) : (
                                             <div className="indexed-paths-empty">
-                                                No folders indexed yet
+                                                {t('sidebar_no_folders')}
                                             </div>
                                         )}
                                     </div>
@@ -95,7 +98,7 @@ export default function Sidebar({
                             className="flex items-center justify-center gap-2 p-2 text-[11px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                             onClick={onDeleteContainer}
                         >
-                            <Trash2 size={12} /> Delete Container
+                            <Trash2 size={12} /> {t('sidebar_delete')}
                         </button>
                     )}
                 </>

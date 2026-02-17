@@ -1,4 +1,5 @@
 import { Search, FolderPlus, Loader2 } from "lucide-react";
+import { useLocale } from "../i18n";
 
 interface SearchBarProps {
     query: string;
@@ -12,6 +13,8 @@ interface SearchBarProps {
 export default function SearchBar({
     query, onQueryChange, activeContainer, isIndexing, onPickFolder, inputRef,
 }: SearchBarProps) {
+    const { t } = useLocale();
+
     return (
         <div className="search-wrapper shrink-0">
             <div className="relative">
@@ -21,14 +24,14 @@ export default function SearchBar({
                     type="text"
                     value={query}
                     onChange={(e) => onQueryChange(e.target.value)}
-                    placeholder={`Search in ${activeContainer}...`}
+                    placeholder={t("search_placeholder", { container: activeContainer })}
                     className="search-input"
                     autoFocus
                 />
                 <button
                     onClick={onPickFolder}
                     className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-md hover:bg-[--color-control-fill-secondary] text-[--color-text-secondary] transition-colors"
-                    title={`Index Folder into ${activeContainer} (Ctrl+O)`}
+                    title={t("index_folder_title", { container: activeContainer })}
                 >
                     {isIndexing ? <Loader2 className="animate-spin" size={18} /> : <FolderPlus size={18} />}
                 </button>

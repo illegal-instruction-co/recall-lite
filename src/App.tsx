@@ -5,6 +5,7 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { useModal, ModalProvider } from "./Modal";
+import { useLocale } from "./i18n";
 import Sidebar from "./components/Sidebar";
 import SearchBar from "./components/SearchBar";
 import ResultsList from "./components/ResultsList";
@@ -28,6 +29,7 @@ function App() {
   const [activeContainer, setActiveContainer] = useState("Default");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const modal = useModal();
+  const { t } = useLocale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<ListImperativeAPI>(null);
@@ -48,13 +50,13 @@ function App() {
 
   async function handleCreateContainer() {
     const result = await modal.prompt({
-      title: "New Container",
+      title: t("dialog_new_container"),
       icon: "info",
       fields: [
-        { key: "name", label: "Name", placeholder: "Work, Gaming, Research..." },
-        { key: "description", label: "Description (AI Context)", placeholder: "accounting files for acme corp" },
+        { key: "name", label: t("dialog_field_name"), placeholder: t("dialog_field_name_placeholder") },
+        { key: "description", label: t("dialog_field_description"), placeholder: t("dialog_field_description_placeholder") },
       ],
-      confirmText: "Create",
+      confirmText: t("dialog_create"),
     });
 
     if (!result.confirmed || !result.values?.name?.trim()) return;
@@ -66,7 +68,7 @@ function App() {
       });
       await fetchContainers();
     } catch (e) {
-      await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: "OK" });
+      await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: t("modal_ok") });
     }
   }
 
@@ -74,10 +76,10 @@ function App() {
     if (activeContainer === "Default") return;
 
     const result = await modal.confirm({
-      title: "Delete Container",
-      message: `Are you sure you want to delete '${activeContainer}'? All indexed data will be lost forever.`,
+      title: t("dialog_delete_title"),
+      message: t("dialog_delete_message", { name: activeContainer }),
       icon: "warning",
-      confirmText: "Delete",
+      confirmText: t("dialog_delete_confirm"),
       confirmVariant: "danger",
     });
 
@@ -87,7 +89,7 @@ function App() {
         await fetchContainers();
         setResults([]);
       } catch (e) {
-        await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: "OK" });
+        await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: t("modal_ok") });
       }
     }
   }
@@ -99,7 +101,7 @@ function App() {
       setActiveContainer(name);
       setResults([]);
       setQuery("");
-      setStatus(`Switched to ${name}`);
+      setStatus(t("status_switched", { name }));
       searchInputRef.current?.focus();
     } catch (e) {
       console.error(e);
@@ -126,10 +128,10 @@ function App() {
       } else if (e.shiftKey && e.key === "Delete") {
         e.preventDefault();
         modal.confirm({
-          title: "Clear Index",
-          message: `Clear index for '${activeContainer}'?`,
+          title: t("dialog_clear_title"),
+          message: t("dialog_clear_message", { name: activeContainer }),
           icon: "warning",
-          confirmText: "Clear",
+          confirmText: t("dialog_clear_confirm"),
           confirmVariant: "danger",
         }).then((result) => {
           if (result.confirmed) handleResetIndex();
@@ -150,7 +152,7 @@ function App() {
     });
 
     const unlistenComplete = listen<string>("indexing-complete", (event) => {
-      setStatus(`Done — ${event.payload}`);
+      setStatus(t("status_done", { message: event.payload }));
       setIsIndexing(false);
       setIndexProgress(null);
       setTimeout(() => setStatus(""), 5000);
@@ -163,7 +165,7 @@ function App() {
     });
 
     const unlistenModelError = listen<string>("model-load-error", (event) => {
-      setStatus(`Model Error: ${event.payload}`);
+      setStatus(t("status_model_error", { error: event.payload }));
       setIsIndexing(false);
       setIndexProgress(null);
     });
@@ -194,7 +196,7 @@ function App() {
         if (searchGenRef.current !== gen) return;
         const msg = String(err);
         if (msg.includes("rebuild") || msg.includes("Model changed")) {
-          setStatus("Index needs rebuild — click Rebuild Index");
+          setStatus(t("status_rebuild_needed"));
         } else {
           setStatus(msg);
         }
@@ -205,11 +207,11 @@ function App() {
 
   async function handleResetIndex() {
     try {
-      setStatus("Clearing index...");
+      setStatus(t("status_clearing"));
       setIsIndexing(true);
       await invoke("reset_index");
       setResults([]);
-      setStatus("Index cleared.");
+      setStatus(t("status_cleared"));
       setIsIndexing(false);
     } catch (err) {
       setStatus(String(err));
@@ -222,16 +224,16 @@ function App() {
     if (!activeInfo || activeInfo.indexed_paths.length === 0) return;
 
     const result = await modal.confirm({
-      title: "Rebuild Index",
-      message: `This will re-index all ${activeInfo.indexed_paths.length} folder(s) in '${activeContainer}' with improved embeddings. This may take a moment.`,
+      title: t("dialog_rebuild_title"),
+      message: t("dialog_rebuild_message", { count: String(activeInfo.indexed_paths.length), name: activeContainer }),
       icon: "info",
-      confirmText: "Rebuild",
+      confirmText: t("dialog_rebuild_confirm"),
     });
 
     if (!result.confirmed) return;
 
     try {
-      setStatus("Rebuilding index...");
+      setStatus(t("status_rebuilding"));
       setIsIndexing(true);
       setResults([]);
       const msg = await invoke<string>("reindex_all");
@@ -248,10 +250,10 @@ function App() {
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        title: `Index folder into '${activeContainer}'`,
+        title: t("index_folder_title", { container: activeContainer }),
       });
       if (selected) {
-        setStatus("Starting indexing...");
+        setStatus(t("status_starting"));
         setIsIndexing(true);
         const msg = await invoke<string>("index_folder", { dir: selected });
         setStatus(msg);
