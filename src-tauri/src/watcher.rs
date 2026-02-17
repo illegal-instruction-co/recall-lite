@@ -16,7 +16,36 @@ pub struct WatcherHandle {
     _debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache>,
 }
 
-pub fn start_watcher(
+pub type WatcherState = Arc<Mutex<Option<WatcherHandle>>>;
+
+pub fn new_state() -> WatcherState {
+    Arc::new(Mutex::new(None))
+}
+
+pub async fn restart(
+    watcher_state: &WatcherState,
+    config_state: &ConfigState,
+    db: lancedb::Connection,
+    model_state: Arc<Mutex<ModelState>>,
+    app: AppHandle,
+) {
+    let handle = {
+        let config = config_state.config.lock().await;
+        let table_name = get_table_name(&config.active_container);
+        let paths = config
+            .containers
+            .get(&config.active_container)
+            .map(|info| info.indexed_paths.clone())
+            .unwrap_or_default();
+        drop(config);
+        start_watcher(paths, db, model_state, table_name, app)
+    };
+
+    let mut guard = watcher_state.lock().await;
+    *guard = handle;
+}
+
+fn start_watcher(
     paths: Vec<String>,
     db: lancedb::Connection,
     model_state: Arc<Mutex<ModelState>>,
@@ -111,19 +140,4 @@ pub fn start_watcher(
     });
 
     Some(WatcherHandle { _debouncer: debouncer })
-}
-
-pub fn start_from_config(
-    config_state: &ConfigState,
-    db: lancedb::Connection,
-    model_state: Arc<Mutex<ModelState>>,
-    app: AppHandle,
-) -> Option<WatcherHandle> {
-    let config = config_state.config.blocking_lock();
-    let table_name = get_table_name(&config.active_container);
-    let info = config.containers.get(&config.active_container)?;
-    let paths = info.indexed_paths.clone();
-    drop(config);
-
-    start_watcher(paths, db, model_state, table_name, app)
 }

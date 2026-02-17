@@ -124,6 +124,9 @@ pub fn run() {
             app.manage(reranker_state.clone());
             app.manage(Arc::new(Mutex::new(DbState { db, path: db_path })));
 
+            let watcher_state = watcher::new_state();
+            app.manage(watcher_state.clone());
+
             let models_path = app_data.join("models");
             std::fs::create_dir_all(&models_path).ok();
 
@@ -135,6 +138,17 @@ pub fn run() {
             let reranker_models_path = models_path.clone();
             let reranker_log = log_path.clone();
             let watcher_model_state = model_state.clone();
+            let watcher_state_for_model = watcher_state.clone();
+            let watcher_app = app.handle().clone();
+            let watcher_config: ConfigState = {
+                let cs: tauri::State<ConfigState> = app.state();
+                ConfigState { config: cs.config.clone(), path: cs.path.clone() }
+            };
+            let watcher_db = {
+                let guard: tauri::State<Arc<Mutex<state::DbState>>> = app.state();
+                let g = guard.blocking_lock();
+                g.db.clone()
+            };
 
             tauri::async_runtime::spawn(async move {
                 if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
@@ -158,6 +172,15 @@ pub fn run() {
                             state.init_error = None;
                             let _ = app_handle.emit("model-loaded", ());
                             loaded = true;
+
+                            watcher::restart(
+                                &watcher_state_for_model,
+                                &watcher_config,
+                                watcher_db.clone(),
+                                watcher_model_state.clone(),
+                                watcher_app.clone(),
+                            ).await;
+
                             break;
                         }
                         Err(e) => {
@@ -210,21 +233,7 @@ pub fn run() {
                 });
             }
 
-            let config_state_ref: tauri::State<ConfigState> = app.state();
-            let db_for_watcher = {
-                let guard: tauri::State<Arc<Mutex<state::DbState>>> = app.state();
-                let g = guard.blocking_lock();
-                g.db.clone()
-            };
-            let _watcher_handle = watcher::start_from_config(
-                config_state_ref.inner(),
-                db_for_watcher,
-                watcher_model_state,
-                app.handle().clone(),
-            );
-            if let Some(handle) = _watcher_handle {
-                app.manage(Arc::new(Mutex::new(Some(handle))));
-            }
+
 
             Ok(())
         })

@@ -8,6 +8,7 @@ use crate::indexer;
 use crate::state::{
     ContainerListItem, DbState, IndexingProgress, ModelState, RerankerState, SearchResult,
 };
+use crate::watcher;
 
 #[tauri::command]
 pub async fn get_containers(
@@ -74,8 +75,12 @@ pub async fn delete_container(
 
 #[tauri::command]
 pub async fn set_active_container(
+    app: tauri::AppHandle,
     name: String,
     config_state: tauri::State<'_, ConfigState>,
+    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
+    watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
     if !config.containers.contains_key(&name) {
@@ -84,6 +89,19 @@ pub async fn set_active_container(
     config.active_container = name;
     drop(config);
     config_state.save().await?;
+
+    let db = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    watcher::restart(
+        watcher_state.inner(),
+        config_state.inner(),
+        db,
+        model_state.inner().clone(),
+        app,
+    ).await;
+
     Ok(())
 }
 
@@ -221,6 +239,7 @@ pub async fn index_folder(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
     config_state: tauri::State<'_, ConfigState>,
+    watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<String, String> {
     let table_name = {
         let config = config_state.config.lock().await;
@@ -254,6 +273,18 @@ pub async fn index_folder(
     .map_err(|e| e.to_string())?;
 
     let _ = app.emit("indexing-complete", format!("{} files indexed", count));
+
+    let db2 = {
+        let guard = db_state.lock().await;
+        guard.db.clone()
+    };
+    watcher::restart(
+        watcher_state.inner(),
+        config_state.inner(),
+        db2,
+        model_state.inner().clone(),
+        app,
+    ).await;
 
     Ok(format!("Indexed {} files", count))
 }
