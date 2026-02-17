@@ -123,17 +123,20 @@ pub async fn search(
 
     let vector_fut = indexer::search_files(&db, &table_name, &query_vector, 50);
 
-    let fts_table_name = table_name.clone();
     let fts_db = db.clone();
+    let fts_table_name = table_name.clone();
     let fts_fut = async move {
+        let futs: Vec<_> = query_variants
+            .iter()
+            .map(|variant| indexer::search_fts(&fts_db, &fts_table_name, variant, 30))
+            .collect();
+        let results = futures::future::join_all(futs).await;
         let mut all_fts: Vec<(String, String)> = Vec::new();
         let mut seen = std::collections::HashSet::new();
-        for variant in &query_variants {
-            if let Ok(results) = indexer::search_fts(&fts_db, &fts_table_name, variant, 30).await {
-                for item in results {
-                    if seen.insert(item.0.clone()) {
-                        all_fts.push(item);
-                    }
+        for result in results.into_iter().flatten() {
+            for item in result {
+                if seen.insert(item.0.clone()) {
+                    all_fts.push(item);
                 }
             }
         }
@@ -150,12 +153,23 @@ pub async fn search(
         indexer::hybrid_merge(&vector_results, &fts_results, 50)
     };
 
-    let rerank_input: Vec<(String, String, f32)> = merged.into_iter().take(30).collect();
+    let rerank_input: Vec<(String, String, f32)> = merged.into_iter().take(15).collect();
 
     let (final_results, used_reranker) = {
         let mut guard = reranker_state.lock().await;
-        if let Some(reranker) = guard.reranker.as_mut() {
-            match indexer::rerank_results(reranker, &query, &rerank_input) {
+        if let Some(reranker) = guard.reranker.take() {
+            let query_clone = query.clone();
+            let input_clone = rerank_input.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                let mut r = reranker;
+                let res = indexer::rerank_results(&mut r, &query_clone, &input_clone);
+                (r, res)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+            let (reranker_back, rerank_res) = result;
+            guard.reranker = Some(reranker_back);
+            match rerank_res {
                 Ok(reranked) => (reranked, true),
                 Err(_) => (rerank_input, false),
             }

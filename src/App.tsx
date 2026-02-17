@@ -176,17 +176,22 @@ function App() {
     };
   }, []);
 
+  const searchGenRef = useRef(0);
+
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
       return;
     }
+    const gen = ++searchGenRef.current;
     const timer = setTimeout(async () => {
       try {
         const res = await invoke<SearchResult[]>("search", { query });
+        if (searchGenRef.current !== gen) return;
         setResults(res);
         setSelectedIndex(0);
       } catch (err) {
+        if (searchGenRef.current !== gen) return;
         const msg = String(err);
         if (msg.includes("rebuild") || msg.includes("Model changed")) {
           setStatus("Index needs rebuild — click Rebuild Index");
@@ -194,7 +199,7 @@ function App() {
           setStatus(msg);
         }
       }
-    }, 150);
+    }, 300);
     return () => clearTimeout(timer);
   }, [query, activeContainer]);
 

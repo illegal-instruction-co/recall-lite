@@ -31,11 +31,12 @@ pub async fn search_files(
         }
     }
 
-    let search_limit = limit * 3;
+    let search_limit = limit * 2;
 
     let results = table
         .vector_search(query_vector)?
         .distance_type(DistanceType::Cosine)
+        .select(lancedb::query::Select::Columns(vec!["path".to_string(), "content".to_string()]))
         .limit(search_limit)
         .execute()
         .await?
