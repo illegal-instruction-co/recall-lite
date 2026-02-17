@@ -5,10 +5,14 @@ pub mod file_io;
 pub mod ocr;
 pub mod search;
 
-use anyhow::Result;
+use std::sync::Arc;
+
+use anyhow::{anyhow, Result};
 use arrow_array::RecordBatchIterator;
-use fastembed::TextEmbedding;
 use lancedb::connection::Connection;
+use tokio::sync::Mutex;
+
+use crate::state::ModelState;
 
 use walkdir::WalkDir;
 
@@ -20,17 +24,38 @@ pub use search::{hybrid_merge, search_files, search_fts};
 const ANN_INDEX_THRESHOLD: usize = 256;
 const EMBED_BATCH_SIZE: usize = 64;
 
+async fn embed_batch(
+    model_state: &Arc<Mutex<ModelState>>,
+    texts: Vec<String>,
+) -> Result<Vec<Vec<f32>>> {
+    let mut guard = model_state.lock().await;
+    let model = guard
+        .model
+        .as_mut()
+        .ok_or_else(|| anyhow!("Model not loaded"))?;
+    embedding::embed_passages(model, texts)
+}
+
+async fn get_model_dim(model_state: &Arc<Mutex<ModelState>>) -> Result<usize> {
+    let mut guard = model_state.lock().await;
+    let model = guard
+        .model
+        .as_mut()
+        .ok_or_else(|| anyhow!("Model not loaded"))?;
+    embedding::get_model_dimension(model)
+}
+
 pub async fn index_directory<F>(
     root_dir: &str,
     table_name: &str,
     db: &Connection,
-    model: &mut TextEmbedding,
+    model_state: &Arc<Mutex<ModelState>>,
     progress_callback: F,
 ) -> Result<usize>
 where
     F: Fn(usize, usize, String) + Send + 'static,
 {
-    let dim = embedding::get_model_dimension(model)?;
+    let dim = get_model_dim(model_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
 
     let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
@@ -101,7 +126,7 @@ where
 
             let batch_chunks: Vec<db::PendingChunk> = pending_chunks.drain(..).collect();
             let texts: Vec<String> = batch_chunks.iter().map(|c| c.content.clone()).collect();
-            let embeddings = embedding::embed_passages(model, texts)?;
+            let embeddings = embed_batch(model_state, texts).await?;
 
             let records: Vec<db::Record> = batch_chunks
                 .into_iter()
@@ -132,7 +157,7 @@ where
         );
 
         let texts: Vec<String> = pending_chunks.iter().map(|c| c.content.clone()).collect();
-        let embeddings = embedding::embed_passages(model, texts)?;
+        let embeddings = embed_batch(model_state, texts).await?;
 
         let records: Vec<db::Record> = pending_chunks
             .into_iter()

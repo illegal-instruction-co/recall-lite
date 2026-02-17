@@ -101,14 +101,10 @@ pub async fn search(
     };
 
     let query_vector = {
-        let guard = match model_state.try_lock() {
-            Ok(g) => g,
-            Err(_) => return Err("Indexing in progress — search will be available when it finishes.".to_string()),
-        };
+        let mut guard = model_state.lock().await;
         if let Some(err) = &guard.init_error {
             return Err(format!("Model failed to load: {}", err));
         }
-        let mut guard = guard;
         let model = guard.model.as_mut().ok_or("AI model is loading... Please wait a moment.")?;
         indexer::embed_query(model, &query)
             .map_err(|e| e.to_string())?
@@ -248,15 +244,10 @@ pub async fn index_folder(
         guard.db.clone()
     };
 
-    let mut guard = model_state.lock().await;
-    if let Some(err) = &guard.init_error {
-        return Err(format!("Model init failed: {}", err));
-    }
-    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
-
+    let ms = model_state.inner().clone();
     let app_handle = app.clone();
 
-    let count = indexer::index_directory(&dir, &table_name, &db, model, move |current, total, path| {
+    let count = indexer::index_directory(&dir, &table_name, &db, &ms, move |current, total, path| {
         let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
     })
     .await
@@ -318,16 +309,12 @@ pub async fn reindex_all(
         guard.db.clone()
     };
 
-    let mut guard = model_state.lock().await;
-    if let Some(err) = &guard.init_error {
-        return Err(format!("Model init failed: {}", err));
-    }
-    let model = guard.model.as_mut().ok_or("Model is still loading...")?;
+    let ms = model_state.inner().clone();
 
     let mut total = 0;
     for dir in &paths {
         let app_handle = app.clone();
-        let count = indexer::index_directory(dir, &table_name, &db, model, move |current, total, path| {
+        let count = indexer::index_directory(dir, &table_name, &db, &ms, move |current, total, path| {
             let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
         })
         .await
