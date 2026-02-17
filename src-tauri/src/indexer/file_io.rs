@@ -77,14 +77,26 @@ pub fn read_file_content(path: &Path) -> Option<String> {
         fs::read_to_string(path).ok()
     } else if ext == "pdf" {
         pdf_extract::extract_text(path).ok()
-    } else if super::ocr::is_image_extension(&ext) {
+    } else {
+        None
+    }
+}
+
+pub fn read_file_content_with_ocr(path: &Path) -> Option<String> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if super::ocr::is_image_extension(&ext) {
         tokio::task::block_in_place(|| {
             tokio::runtime::Handle::current()
                 .block_on(super::ocr::extract_text_from_image(path))
                 .ok()
         })
     } else {
-        None
+        read_file_content(path)
     }
 }
 

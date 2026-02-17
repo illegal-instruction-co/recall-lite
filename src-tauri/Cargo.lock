@@ -6971,6 +6971,7 @@ dependencies = [
  "lancedb",
  "mimalloc",
  "pdf-extract",
+ "rayon",
  "regex",
  "reverse_geocoder",
  "serde",

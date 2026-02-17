@@ -28,6 +28,7 @@ walkdir = "2"
 regex = "1"
 futures = { version = "0.3", default-features = false, features = ["alloc"] }
 anyhow = "1"
+rayon = "1.10"
 kamadak-exif = "0.5"
 reverse_geocoder = "4"
 chrono = "0.4"
@@ -47,7 +48,7 @@ windows = { version = "0.61", features = [
 tauri-plugin-opener = "2.5.3"
 
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
 codegen-units = 1
 strip = true

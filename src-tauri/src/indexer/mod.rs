@@ -10,6 +10,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use arrow_array::RecordBatchIterator;
 use lancedb::connection::Connection;
+use rayon::prelude::*;
 use tokio::sync::Mutex;
 
 use crate::state::ModelState;
@@ -22,7 +23,13 @@ pub use embedding::{embed_query, load_model, load_reranker, rerank_results};
 pub use search::{hybrid_merge, search_files, search_fts};
 
 const ANN_INDEX_THRESHOLD: usize = 256;
-const EMBED_BATCH_SIZE: usize = 64;
+const EMBED_BATCH_SIZE: usize = 256;
+
+struct ExtractedFile {
+    path: String,
+    chunks: Vec<String>,
+    mtime: i64,
+}
 
 async fn embed_batch(
     model_state: &Arc<Mutex<ModelState>>,
@@ -53,7 +60,7 @@ pub async fn index_directory<F>(
     progress_callback: F,
 ) -> Result<usize>
 where
-    F: Fn(usize, usize, String) + Send + 'static,
+    F: Fn(usize, usize, String) + Send + Sync + 'static,
 {
     let dim = get_model_dim(model_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
@@ -68,59 +75,121 @@ where
         .collect();
     let total_files = all_files.len();
 
-    let mut pending_chunks: Vec<db::PendingChunk> = Vec::new();
-    let mut files_indexed_set: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut files_seen = 0;
-    let mut current_file = 0;
-    let mut batches_written = 0;
+    progress_callback(0, total_files, "Scanning files...".to_string());
 
-    for path in &all_files {
-        current_file += 1;
+    let image_files: Vec<_> = all_files
+        .iter()
+        .filter(|p| {
+            let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            ocr::is_image_extension(&ext)
+        })
+        .cloned()
+        .collect();
+
+    let non_image_files: Vec<_> = all_files
+        .iter()
+        .filter(|p| {
+            let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            !ocr::is_image_extension(&ext)
+        })
+        .cloned()
+        .collect();
+
+    let extracted: Vec<ExtractedFile> = non_image_files
+        .par_iter()
+        .filter_map(|path| {
+            let path_str = path.to_string_lossy().to_string();
+            let mtime = file_io::get_file_mtime(path);
+
+            if let Some(&existing_mtime) = existing_mtimes.get(&path_str) {
+                if existing_mtime == mtime {
+                    return None;
+                }
+            }
+
+            let text = file_io::read_file_content(path)?;
+            if text.trim().is_empty() {
+                return None;
+            }
+
+            let ext = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let chunks = chunking::semantic_chunk(&text, &ext);
+
+            Some(ExtractedFile {
+                path: path_str,
+                chunks,
+                mtime,
+            })
+        })
+        .collect();
+
+    let mut image_extracted: Vec<ExtractedFile> = Vec::new();
+    for path in &image_files {
         let path_str = path.to_string_lossy().to_string();
         let mtime = file_io::get_file_mtime(path);
 
         if let Some(&existing_mtime) = existing_mtimes.get(&path_str) {
             if existing_mtime == mtime {
-                files_seen += 1;
-                progress_callback(current_file, total_files, path_str);
                 continue;
             }
         }
 
-        let text = match file_io::read_file_content(path) {
-            Some(t) if !t.trim().is_empty() => t,
-            _ => {
-                progress_callback(current_file, total_files, path_str);
-                continue;
+        if let Some(text) = file_io::read_file_content_with_ocr(path) {
+            if !text.trim().is_empty() {
+                let ext = path
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let chunks = chunking::semantic_chunk(&text, &ext);
+                image_extracted.push(ExtractedFile {
+                    path: path_str,
+                    chunks,
+                    mtime,
+                });
             }
-        };
+        }
+    }
 
-        let safe_path = path_str.replace('\'', "''");
+    let mut all_extracted = extracted;
+    all_extracted.extend(image_extracted);
+    let files_indexed = all_extracted.len();
+
+    if files_indexed == 0 {
+        progress_callback(total_files, total_files, "Done -- no new files".to_string());
+        return Ok(0);
+    }
+
+    progress_callback(
+        0,
+        files_indexed,
+        format!("Extracted {} files, starting embedding...", files_indexed),
+    );
+
+    let mut pending_chunks: Vec<db::PendingChunk> = Vec::new();
+    let mut batches_written = 0;
+
+    for (idx, ef) in all_extracted.iter().enumerate() {
+        let safe_path = ef.path.replace('\'', "''");
         let _ = table.delete(&format!("path = '{}'", safe_path)).await;
 
-        let ext = path
-            .extension()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let chunks = chunking::semantic_chunk(&text, &ext);
-        files_indexed_set.insert(path_str.clone());
-        for chunk in chunks {
+        for chunk in &ef.chunks {
             pending_chunks.push(db::PendingChunk {
-                path: path_str.clone(),
-                content: chunk,
-                mtime,
+                path: ef.path.clone(),
+                content: chunk.clone(),
+                mtime: ef.mtime,
             });
         }
-
-        progress_callback(current_file, total_files, path_str);
-        files_seen += 1;
 
         if pending_chunks.len() >= EMBED_BATCH_SIZE {
             batches_written += 1;
             progress_callback(
-                current_file,
-                total_files,
+                idx + 1,
+                files_indexed,
                 format!("Embedding batch {}", batches_written),
             );
 
@@ -151,8 +220,8 @@ where
     if !pending_chunks.is_empty() {
         batches_written += 1;
         progress_callback(
-            total_files,
-            total_files,
+            files_indexed,
+            files_indexed,
             format!("Embedding batch {}", batches_written),
         );
 
@@ -178,19 +247,14 @@ where
             .await?;
     }
 
-    let files_indexed = files_indexed_set.len();
+    let total_indexed = total_files - image_files.len() + files_indexed;
 
-    if files_indexed == 0 {
-        progress_callback(total_files, total_files, "Done -- no new files".to_string());
-        return Ok(0);
-    }
-
-    if files_seen >= ANN_INDEX_THRESHOLD {
-        progress_callback(total_files, total_files, "Building vector index...".to_string());
+    if total_indexed >= ANN_INDEX_THRESHOLD {
+        progress_callback(files_indexed, files_indexed, "Building vector index...".to_string());
         let _ = db::build_ann_index(&table).await;
     }
 
-    progress_callback(total_files, total_files, "Building search index...".to_string());
+    progress_callback(files_indexed, files_indexed, "Building search index...".to_string());
     let _ = db::build_fts_index(&table).await;
 
     Ok(files_indexed)
