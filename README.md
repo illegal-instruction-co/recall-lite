@@ -63,5 +63,8 @@ logs: `%AppData%\com.recall-lite.app\recall.log`
 - auto-migrates old configs, retries model load 3x, cleans up legacy cache
 - release builds only. debug is 10x slower thats normal
 
+## roadmap
+see [ROADMAP.md](ROADMAP.md).
+
 ## license
 MIT. do whatever.
