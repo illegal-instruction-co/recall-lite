@@ -11,7 +11,7 @@ use rmcp::{tool_handler, tool_router, schemars, ErrorData as McpError, ServerHan
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-use recall_lite_lib::config::{get_embedding_model, get_table_name, Config};
+use recall_lite_lib::config::{get_embedding_model, get_table_name, load_config, Config};
 use recall_lite_lib::indexer;
 
 #[global_allocator]
@@ -123,18 +123,21 @@ impl RecallServer {
             if let Some(reranker) = guard.reranker.take() {
                 let query_clone = query.clone();
                 let input_clone = rerank_input.clone();
-                let result = tokio::task::spawn_blocking(move || {
+                match tokio::task::spawn_blocking(move || {
                     let mut r = reranker;
                     let res =
                         indexer::rerank_results(&mut r, &query_clone, &input_clone);
                     (r, res)
                 })
                 .await
-                .map_err(|e| McpError::internal_error(e.to_string(), None))?;
-                let (reranker_back, rerank_res) = result;
-                guard.reranker = Some(reranker_back);
-                match rerank_res {
-                    Ok(reranked) => (reranked, true),
+                {
+                    Ok((reranker_back, rerank_res)) => {
+                        guard.reranker = Some(reranker_back);
+                        match rerank_res {
+                            Ok(reranked) => (reranked, true),
+                            Err(_) => (rerank_input, false),
+                        }
+                    }
                     Err(_) => (rerank_input, false),
                 }
             } else {
@@ -273,12 +276,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let config_path = app_data.join("config.json");
-    let config: Config = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_default()
-    } else {
-        Config::default()
-    };
+    let config = load_config(&config_path);
 
     let model_enum = get_embedding_model(&config.embedding_model);
     let model = indexer::load_model(model_enum, models_path.clone())?;

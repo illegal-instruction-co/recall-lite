@@ -64,3 +64,49 @@ pub fn get_embedding_model(name: &str) -> fastembed::EmbeddingModel {
         _ => fastembed::EmbeddingModel::MultilingualE5Base,
     }
 }
+
+pub fn load_config(config_path: &std::path::Path) -> Config {
+    if !config_path.exists() {
+        return Config::default();
+    }
+    let content = std::fs::read_to_string(config_path).unwrap_or_default();
+    match serde_json::from_str::<Config>(&content) {
+        Ok(c) => c,
+        Err(_) => {
+            #[derive(Deserialize)]
+            struct OldConfig {
+                embedding_model: Option<String>,
+                containers: Option<Vec<String>>,
+                active_container: Option<String>,
+            }
+            let migrated = if let Ok(old) = serde_json::from_str::<OldConfig>(&content) {
+                let mut containers = HashMap::new();
+                if let Some(names) = old.containers {
+                    for name in names {
+                        containers.insert(name, ContainerInfo {
+                            description: String::new(),
+                            indexed_paths: Vec::new(),
+                        });
+                    }
+                }
+                if containers.is_empty() {
+                    containers.insert("Default".to_string(), ContainerInfo {
+                        description: String::new(),
+                        indexed_paths: Vec::new(),
+                    });
+                }
+                Config {
+                    embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
+                    active_container: old.active_container.unwrap_or_else(|| "Default".to_string()),
+                    containers,
+                }
+            } else {
+                Config::default()
+            };
+            if let Ok(json) = serde_json::to_string_pretty(&migrated) {
+                let _ = std::fs::write(config_path, json);
+            }
+            migrated
+        }
+    }
+}

@@ -3,19 +3,19 @@ pub mod config;
 pub mod indexer;
 pub mod state;
 
-use std::collections::HashMap;
+
 use std::sync::Arc;
 use std::fs;
 use std::io::Write;
 
-use serde::Deserialize;
+
 use tauri::{Emitter, Manager};
 use tauri::menu::{Menu, MenuItem, MenuEvent};
 use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 
-use config::{Config, ConfigState, ContainerInfo, get_embedding_model};
+use config::{ConfigState, get_embedding_model};
 use state::{DbState, ModelState, RerankerState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -107,53 +107,7 @@ pub fn run() {
                 .build(app)?;
 
             let config_path = app_data.join("config.json");
-            let config: Config = if config_path.exists() {
-                let content = fs::read_to_string(&config_path).unwrap_or_default();
-                match serde_json::from_str::<Config>(&content) {
-                    Ok(c) => c,
-                    Err(_) => {
-                        #[derive(Deserialize)]
-                        struct OldConfig {
-                            embedding_model: Option<String>,
-                            containers: Option<Vec<String>>,
-                            active_container: Option<String>,
-                        }
-                        let migrated = if let Ok(old) = serde_json::from_str::<OldConfig>(&content) {
-                            let mut containers = HashMap::new();
-                            if let Some(names) = old.containers {
-                                for name in names {
-                                    containers.insert(name, ContainerInfo {
-                                        description: String::new(),
-                                        indexed_paths: Vec::new(),
-                                    });
-                                }
-                            }
-                            if containers.is_empty() {
-                                containers.insert("Default".to_string(), ContainerInfo {
-                                    description: String::new(),
-                                    indexed_paths: Vec::new(),
-                                });
-                            }
-                            Config {
-                                embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
-                                active_container: old.active_container.unwrap_or_else(|| "Default".to_string()),
-                                containers,
-                            }
-                        } else {
-                            Config::default()
-                        };
-                        if let Ok(json) = serde_json::to_string_pretty(&migrated) {
-                            let _ = fs::write(&config_path, json);
-                        }
-                        migrated
-                    }
-                }
-            } else {
-                let config = Config::default();
-                let content = serde_json::to_string_pretty(&config).unwrap();
-                fs::write(&config_path, content).ok();
-                config
-            };
+            let config = config::load_config(&config_path);
 
             let model_enum = get_embedding_model(&config.embedding_model);
 
