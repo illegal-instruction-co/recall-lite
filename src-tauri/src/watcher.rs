@@ -152,12 +152,16 @@ fn start_watcher(
 
                 for path in &deleted {
                     let path_str = path.to_string_lossy().to_string();
-                    let _ = indexer::delete_file_from_index(&path_str, &tn, &db).await;
+                    if let Err(e) = indexer::delete_file_from_index(&path_str, &tn, &db).await {
+                        let _ = app.emit("watcher-error", format!("Failed to remove {}: {}", path_str, e));
+                    }
                     count += 1;
                 }
 
                 for path in &changed {
-                    let _ = indexer::index_single_file(path, &tn, &db, &ms, use_git_history).await;
+                    if let Err(e) = indexer::index_single_file(path, &tn, &db, &ms, use_git_history).await {
+                        let _ = app.emit("watcher-error", format!("Failed to index {}: {}", path.display(), e));
+                    }
                     count += 1;
                     let _ = app.emit("indexing-progress", IndexingProgress {
                         current: count,

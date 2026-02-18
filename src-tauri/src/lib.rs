@@ -135,7 +135,7 @@ pub fn run() {
                 path: config_path,
             });
 
-            let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None }));
+            let model_state = Arc::new(Mutex::new(ModelState { model: None, init_error: None, cached_dim: None }));
             app.manage(model_state.clone());
 
             let reranker_state = Arc::new(Mutex::new(RerankerState { reranker: None, init_error: None }));

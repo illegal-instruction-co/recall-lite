@@ -8,6 +8,7 @@ pub struct DbState {
 pub struct ModelState {
     pub model: Option<fastembed::TextEmbedding>,
     pub init_error: Option<String>,
+    pub cached_dim: Option<usize>,
 }
 
 pub struct RerankerState {

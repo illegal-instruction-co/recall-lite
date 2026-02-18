@@ -213,6 +213,9 @@ fn parse_gps_coord(exif: &exif::Exif, coord_tag: exif::Tag, ref_tag: exif::Tag) 
     let field = exif.get_field(coord_tag, exif::In::PRIMARY)?;
     let values: Vec<f64> = match &field.value {
         exif::Value::Rational(rats) => {
+            if rats.iter().any(|r| r.denom == 0) {
+                return None;
+            }
             rats.iter().map(|r| r.num as f64 / r.denom as f64).collect()
         }
         _ => return None,

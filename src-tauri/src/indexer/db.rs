@@ -50,6 +50,31 @@ pub async fn build_fts_index(table: &Table) -> Result<()> {
     Ok(())
 }
 
+pub async fn get_single_file_mtime(table: &Table, file_path: &str) -> Result<Option<i64>> {
+    let safe_path = file_path.replace('\'', "''");
+    let results = table
+        .query()
+        .only_if(format!("path = '{}'", safe_path))
+        .select(lancedb::query::Select::Columns(vec!["mtime".to_string()]))
+        .limit(1)
+        .execute()
+        .await?
+        .try_collect::<Vec<_>>()
+        .await?;
+
+    for batch in results {
+        if let Some(mtime_array) = batch
+            .column_by_name("mtime")
+            .and_then(|c| c.as_any().downcast_ref::<Int64Array>())
+        {
+            if batch.num_rows() > 0 {
+                return Ok(Some(mtime_array.value(0)));
+            }
+        }
+    }
+    Ok(None)
+}
+
 pub async fn get_indexed_mtimes(table: &Table) -> Result<HashMap<String, i64>> {
     let mut mtimes = HashMap::new();
 

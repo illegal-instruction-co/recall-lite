@@ -1,3 +1,5 @@
+use std::panic::AssertUnwindSafe;
+
 use anyhow::{anyhow, Result};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use fastembed::{RerankInitOptions, RerankResult, RerankerModel, TextRerank};
@@ -92,4 +94,28 @@ pub fn rerank_results(
             (path.clone(), snippet.clone(), score)
         })
         .collect())
+}
+
+pub async fn safe_rerank(
+    reranker: fastembed::TextRerank,
+    query: String,
+    input: Vec<(String, String, f32)>,
+) -> (Option<fastembed::TextRerank>, Vec<(String, String, f32)>, bool) {
+    let fallback = input.clone();
+    match tokio::task::spawn_blocking(move || {
+        let mut r = reranker;
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            rerank_results(&mut r, &query, &input)
+        }));
+        match result {
+            Ok(Ok(reranked)) => (Some(r), reranked, true),
+            Ok(Err(_)) => (Some(r), input, false),
+            Err(_) => (None, input, false),
+        }
+    })
+    .await
+    {
+        Ok((reranker_back, results, used)) => (reranker_back, results, used),
+        Err(_) => (None, fallback, false),
+    }
 }

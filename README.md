@@ -24,7 +24,7 @@ semantic search tool for humans and AI agents. you type meaning, it finds files.
 | **image OCR** | ✅ built-in | ❌ | ❌ | ❌ |
 | **EXIF / GPS** | ✅ reverse geocodes to city names | ❌ | ❌ | ❌ |
 | **MCP server** | ✅ built-in for AI agents | ❌ | ❌ | ❌ |
-| **price** | free, open source | free, open source | free | starts at $19/user/mo |
+| **price** | free, open source | free, open source | free | starts at $49/user/mo |
 
 ## what it does
 

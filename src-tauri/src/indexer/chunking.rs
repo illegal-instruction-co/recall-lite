@@ -39,69 +39,187 @@ pub fn get_chunk_config(ext: &str) -> ChunkConfig {
     }
 }
 
-fn get_semantic_pattern(ext: &str) -> Option<Regex> {
-    let pattern = match ext {
-        "rs" => r"\n(?:pub\s+)?(?:async\s+)?(?:fn |struct |enum |impl |trait |mod )",
-        "py" | "pyi" | "pyw" => r"\n(?:class |def |async def )",
-        "js" | "jsx" | "mjs" | "cjs" => {
-            r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))"
+use std::collections::HashMap;
+use std::sync::LazyLock;
+
+static SEMANTIC_PATTERNS: LazyLock<HashMap<&'static str, Regex>> = LazyLock::new(|| {
+    let entries: Vec<(&str, &str)> = vec![
+        (
+            "rs",
+            r"\n(?:pub\s+)?(?:async\s+)?(?:fn |struct |enum |impl |trait |mod )",
+        ),
+        ("py", r"\n(?:class |def |async def )"),
+        ("pyi", r"\n(?:class |def |async def )"),
+        ("pyw", r"\n(?:class |def |async def )"),
+        (
+            "js",
+            r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))",
+        ),
+        (
+            "jsx",
+            r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))",
+        ),
+        (
+            "mjs",
+            r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))",
+        ),
+        (
+            "cjs",
+            r"\n(?:function |class |export (?:default )?(?:function |class |const |let ))",
+        ),
+        (
+            "ts",
+            r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))",
+        ),
+        (
+            "tsx",
+            r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))",
+        ),
+        (
+            "mts",
+            r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))",
+        ),
+        (
+            "cts",
+            r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))",
+        ),
+        ("go", r"\n(?:func |type )"),
+        (
+            "java",
+            r"\n\s*(?:public |private |protected )?(?:static )?(?:class |interface |void |int |string |def )",
+        ),
+        (
+            "cs",
+            r"\n\s*(?:public |private |protected )?(?:static )?(?:class |interface |void |int |string |def )",
+        ),
+        (
+            "kt",
+            r"\n(?:(?:override |suspend |private |internal |public )?(?:fun |class |object |interface |data class |sealed class |enum class ))",
+        ),
+        (
+            "kts",
+            r"\n(?:(?:override |suspend |private |internal |public )?(?:fun |class |object |interface |data class |sealed class |enum class ))",
+        ),
+        (
+            "scala",
+            r"\n\s*(?:(?:private |protected )?(?:def |class |object |trait |case class |val |var ))",
+        ),
+        (
+            "sc",
+            r"\n\s*(?:(?:private |protected )?(?:def |class |object |trait |case class |val |var ))",
+        ),
+        (
+            "swift",
+            r"\n\s*(?:(?:public |private |internal |open )?(?:func |class |struct |enum |protocol |extension ))",
+        ),
+        (
+            "dart",
+            r"\n\s*(?:(?:abstract )?class |void |Future |Stream |[A-Z][a-zA-Z]*\s+[a-z])",
+        ),
+        ("c", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("cpp", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("cc", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("cxx", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("h", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("hpp", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("hxx", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("hh", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("m", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("mm", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        ("rb", r"\n(?:class |module |def )"),
+        ("erb", r"\n(?:class |module |def )"),
+        (
+            "php",
+            r"\n\s*(?:(?:public |private |protected |static )?function |class |interface |trait )",
+        ),
+        ("lua", r"\n(?:(?:local )?function )"),
+        (
+            "jl",
+            r"\n(?:function |macro |struct |module |abstract type )",
+        ),
+        ("ex", r"\n\s*(?:def |defp |defmodule |defmacro )"),
+        ("exs", r"\n\s*(?:def |defp |defmodule |defmacro )"),
+        ("erl", r"\n[a-z][a-zA-Z0-9_]*\("),
+        ("hrl", r"\n[a-z][a-zA-Z0-9_]*\("),
+        ("hs", r"\n[a-z][a-zA-Z0-9_']*\s+::"),
+        ("lhs", r"\n[a-z][a-zA-Z0-9_']*\s+::"),
+        ("ml", r"\n(?:let |type |module |val )"),
+        ("mli", r"\n(?:let |type |module |val )"),
+        ("elm", r"\n[a-z][a-zA-Z0-9_]*\s+:"),
+        ("fs", r"\n(?:let |type |module |member )"),
+        ("fsi", r"\n(?:let |type |module |member )"),
+        ("fsx", r"\n(?:let |type |module |member )"),
+        ("zig", r"\n(?:(?:pub )?(?:fn |const |var ))"),
+        ("nim", r"\n(?:proc |func |method |type |template |macro )"),
+        ("v", r"\n(?:(?:pub )?(?:fn |struct |enum |interface ))"),
+        ("d", r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"),
+        (
+            "sol",
+            r"\n\s*(?:function |contract |interface |library |event |modifier )",
+        ),
+        ("clj", r"\n\("),
+        ("cljs", r"\n\("),
+        ("cljc", r"\n\("),
+        ("lisp", r"\n\("),
+        ("el", r"\n\("),
+        ("rkt", r"\n\("),
+        ("pl", r"\n(?:sub |package )"),
+        ("pm", r"\n(?:sub |package )"),
+        ("r", r"\n[a-zA-Z_.][a-zA-Z0-9_.]*\s*<-\s*function"),
+        ("groovy", r"\n\s*(?:def |class |interface )"),
+        ("gradle", r"\n\s*(?:def |class |interface )"),
+        ("vue", r"\n<(?:template|script|style)"),
+        ("svelte", r"\n<(?:template|script|style)"),
+        ("astro", r"\n<(?:template|script|style)"),
+        ("pas", r"\n(?:procedure |function |type |var |begin )"),
+        ("vb", r"\n\s*(?:Sub |Function |Class |Property |Module )"),
+        ("vbs", r"\n\s*(?:Sub |Function |Class |Property |Module )"),
+        ("md", r"\n#{1,6} "),
+        ("markdown", r"\n#{1,6} "),
+        ("rst", r"\n\n"),
+        ("adoc", r"\n\n"),
+        ("txt", r"\n\n"),
+        ("tex", r"\n\n"),
+        ("bib", r"\n\n"),
+        ("toml", r"\n\["),
+        ("ini", r"\n\["),
+        ("cfg", r"\n\["),
+        ("yaml", r"\n[a-zA-Z_][a-zA-Z0-9_]*:"),
+        ("yml", r"\n[a-zA-Z_][a-zA-Z0-9_]*:"),
+        (
+            "tf",
+            r"\n(?:resource |data |variable |output |module |locals )",
+        ),
+        (
+            "tfvars",
+            r"\n(?:resource |data |variable |output |module |locals )",
+        ),
+        (
+            "hcl",
+            r"\n(?:resource |data |variable |output |module |locals )",
+        ),
+        ("nix", r"\n\s*[a-zA-Z_][a-zA-Z0-9_-]*\s*="),
+        ("proto", r"\n(?:message |service |enum |rpc )"),
+        (
+            "graphql",
+            r"\n(?:type |query |mutation |subscription |input |interface |enum )",
+        ),
+        (
+            "gql",
+            r"\n(?:type |query |mutation |subscription |input |interface |enum )",
+        ),
+    ];
+    let mut map = HashMap::new();
+    for (ext, pattern) in entries {
+        if let Ok(re) = Regex::new(pattern) {
+            map.insert(ext, re);
         }
-        "ts" | "tsx" | "mts" | "cts" => {
-            r"\n(?:(?:export )?(?:function |class |interface |type |const |enum |async function ))"
-        }
-        "go" => r"\n(?:func |type )",
-        "java" | "cs" => {
-            r"\n\s*(?:public |private |protected )?(?:static )?(?:class |interface |void |int |string |def )"
-        }
-        "kt" | "kts" => {
-            r"\n(?:(?:override |suspend |private |internal |public )?(?:fun |class |object |interface |data class |sealed class |enum class ))"
-        }
-        "scala" | "sc" => {
-            r"\n\s*(?:(?:private |protected )?(?:def |class |object |trait |case class |val |var ))"
-        }
-        "swift" => {
-            r"\n\s*(?:(?:public |private |internal |open )?(?:func |class |struct |enum |protocol |extension ))"
-        }
-        "dart" => r"\n\s*(?:(?:abstract )?class |void |Future |Stream |[A-Z][a-zA-Z]*\s+[a-z])",
-        "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" | "hxx" | "hh" | "m" | "mm" => {
-            r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)"
-        }
-        "rb" | "erb" => r"\n(?:class |module |def )",
-        "php" => {
-            r"\n\s*(?:(?:public |private |protected |static )?function |class |interface |trait )"
-        }
-        "lua" => r"\n(?:(?:local )?function )",
-        "jl" => r"\n(?:function |macro |struct |module |abstract type )",
-        "ex" | "exs" => r"\n\s*(?:def |defp |defmodule |defmacro )",
-        "erl" | "hrl" => r"\n[a-z][a-zA-Z0-9_]*\(",
-        "hs" | "lhs" => r"\n[a-z][a-zA-Z0-9_']*\s+::",
-        "ml" | "mli" => r"\n(?:let |type |module |val )",
-        "elm" => r"\n[a-z][a-zA-Z0-9_]*\s+:",
-        "fs" | "fsi" | "fsx" => r"\n(?:let |type |module |member )",
-        "zig" => r"\n(?:(?:pub )?(?:fn |const |var ))",
-        "nim" => r"\n(?:proc |func |method |type |template |macro )",
-        "v" => r"\n(?:(?:pub )?(?:fn |struct |enum |interface ))",
-        "d" => r"\n(?:[a-zA-Z_][a-zA-Z0-9_*\s]+\([^)]*\)\s*\{)",
-        "sol" => r"\n\s*(?:function |contract |interface |library |event |modifier )",
-        "clj" | "cljs" | "cljc" | "lisp" | "el" | "rkt" => r"\n\(",
-        "pl" | "pm" => r"\n(?:sub |package )",
-        "r" => r"\n[a-zA-Z_.][a-zA-Z0-9_.]*\s*<-\s*function",
-        "groovy" | "gradle" => r"\n\s*(?:def |class |interface )",
-        "vue" | "svelte" | "astro" => r"\n<(?:template|script|style)",
-        "pas" => r"\n(?:procedure |function |type |var |begin )",
-        "vb" | "vbs" => r"\n\s*(?:Sub |Function |Class |Property |Module )",
-        "md" | "markdown" => r"\n#{1,6} ",
-        "rst" | "adoc" => r"\n\n",
-        "txt" | "tex" | "bib" => r"\n\n",
-        "toml" | "ini" | "cfg" => r"\n\[",
-        "yaml" | "yml" => r"\n[a-zA-Z_][a-zA-Z0-9_]*:",
-        "tf" | "tfvars" | "hcl" => r"\n(?:resource |data |variable |output |module |locals )",
-        "nix" => r"\n\s*[a-zA-Z_][a-zA-Z0-9_-]*\s*=",
-        "proto" => r"\n(?:message |service |enum |rpc )",
-        "graphql" | "gql" => r"\n(?:type |query |mutation |subscription |input |interface |enum )",
-        _ => return None,
-    };
-    Regex::new(pattern).ok()
+    }
+    map
+});
+
+fn get_semantic_pattern(ext: &str) -> Option<&'static Regex> {
+    SEMANTIC_PATTERNS.get(ext)
 }
 
 pub fn semantic_chunk_with_overrides(
