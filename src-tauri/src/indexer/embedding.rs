@@ -1,6 +1,7 @@
 use std::panic::AssertUnwindSafe;
 
 use anyhow::{anyhow, Result};
+use log::{debug, warn};
 use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
 use fastembed::{RerankInitOptions, RerankResult, RerankerModel, TextRerank};
 
@@ -108,9 +109,18 @@ pub async fn safe_rerank(
             rerank_results(&mut r, &query, &input)
         }));
         match result {
-            Ok(Ok(reranked)) => (Some(r), reranked, true),
-            Ok(Err(_)) => (Some(r), input, false),
-            Err(_) => (None, input, false),
+            Ok(Ok(reranked)) => {
+                debug!("Reranked {} results", reranked.len());
+                (Some(r), reranked, true)
+            }
+            Ok(Err(e)) => {
+                warn!("Reranker error (falling back): {}", e);
+                (Some(r), input, false)
+            }
+            Err(_) => {
+                warn!("Reranker panicked, discarding instance");
+                (None, input, false)
+            }
         }
     })
     .await

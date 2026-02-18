@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+use log::{info, debug, warn};
 use arrow_array::{
     Float32Array, FixedSizeListArray, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
 };
@@ -31,6 +32,7 @@ pub async fn reset_index(db_path: &Path, table_name: &str) -> Result<()> {
         .execute()
         .await?;
     let _ = db.drop_table(table_name, &[]).await;
+    info!("Index reset: dropped table '{}'", table_name);
     Ok(())
 }
 
@@ -39,6 +41,7 @@ pub async fn build_ann_index(table: &Table) -> Result<()> {
         .create_index(&["vector"], Index::Auto)
         .execute()
         .await?;
+    debug!("ANN index built for table");
     Ok(())
 }
 
@@ -118,6 +121,7 @@ pub async fn get_or_create_table(db: &Connection, table_name: &str, dim: usize) 
                 }
             }
         }
+        warn!("Table '{}' schema mismatch (dim or mtime), recreating", table_name);
         let _ = db.drop_table(table_name, &[]).await;
     }
 
@@ -127,6 +131,8 @@ pub async fn get_or_create_table(db: &Connection, table_name: &str, dim: usize) 
         .create_table(table_name, RecordBatchIterator::new(vec![], schema))
         .execute()
         .await?;
+
+    info!("Table '{}' created (dim={})", table_name, dim);
 
     Ok(table)
 }

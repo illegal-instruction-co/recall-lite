@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use log::{info, error, debug};
+
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use notify_debouncer_full::notify::{self, RecursiveMode};
 use tauri::{AppHandle, Emitter};
@@ -62,6 +64,7 @@ pub async fn restart(
         start_watcher(paths, db, provider_state, table_name, app, wc)
     };
 
+    info!("File watcher restarted");
     let mut guard = watcher_state.lock().await;
     *guard = handle;
 }
@@ -81,8 +84,11 @@ fn start_watcher(
     wc: WatcherConfig,
 ) -> Option<WatcherHandle> {
     if paths.is_empty() {
+        debug!("No paths to watch, skipping watcher");
         return None;
     }
+
+    info!("Starting file watcher for {} paths", paths.len());
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -92,7 +98,10 @@ fn start_watcher(
         }
     }) {
         Ok(d) => d,
-        Err(_) => return None,
+        Err(e) => {
+            error!("Failed to create file watcher debouncer: {}", e);
+            return None;
+        }
     };
 
     for path in &paths {
@@ -152,6 +161,8 @@ fn start_watcher(
             rt.spawn(async move {
                 let _guard = lock.lock().await;
 
+                debug!("Auto-reindexing {} changed, {} deleted files", changed.len(), deleted.len());
+
                 let _ = app.emit("indexing-progress", IndexingProgress {
                     current: 0,
                     total,
@@ -163,14 +174,14 @@ fn start_watcher(
                 for path in &deleted {
                     let path_str = path.to_string_lossy().to_string();
                     if let Err(e) = indexer::delete_file_from_index(&path_str, &tn, &db).await {
-                        let _ = app.emit("watcher-error", format!("Failed to remove {}: {}", path_str, e));
+                        error!("Failed to remove {} from index: {}", path_str, e);
                     }
                     count += 1;
                 }
 
                 for path in &changed {
                     if let Err(e) = indexer::index_single_file(path, &tn, &db, &ms, wc.use_git_history, wc.chunk_size, wc.chunk_overlap).await {
-                        let _ = app.emit("watcher-error", format!("Failed to index {}: {}", path.display(), e));
+                        error!("Failed to index {}: {}", path.display(), e);
                     }
                     count += 1;
                     let _ = app.emit("indexing-progress", IndexingProgress {

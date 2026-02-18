@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use log::{info, warn};
+
 use serde::{Deserialize, Serialize};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tokio::sync::Mutex;
@@ -205,7 +207,7 @@ pub fn parse_hotkey(s: &str) -> Shortcut {
         "/" | "slash" => Code::Slash,
         "`" | "backquote" => Code::Backquote,
         _ => {
-            eprintln!("[config] unrecognized hotkey key: '{}', falling back to Space", key_str);
+            warn!("Unrecognized hotkey key: '{}', falling back to Space", key_str);
             Code::Space
         }
     };
@@ -223,7 +225,9 @@ impl ConfigState {
     pub async fn save(&self) -> Result<(), String> {
         let config = self.config.lock().await;
         let content = serde_json::to_string_pretty(&*config).map_err(|e| e.to_string())?;
-        std::fs::write(&self.path, content).map_err(|e| e.to_string())
+        std::fs::write(&self.path, content).map_err(|e| e.to_string())?;
+        info!("Config saved to {:?}", self.path);
+        Ok(())
     }
 }
 
@@ -256,6 +260,7 @@ pub fn get_local_model_name(config: &Config) -> String {
 
 pub fn load_config(config_path: &std::path::Path) -> Config {
     if !config_path.exists() {
+        info!("No config found, creating default config");
         let default = Config::default();
         if let Ok(json) = serde_json::to_string_pretty(&default) {
             let _ = std::fs::write(config_path, json);
@@ -264,8 +269,12 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
     }
     let content = std::fs::read_to_string(config_path).unwrap_or_default();
     match serde_json::from_str::<Config>(&content) {
-        Ok(c) => c,
+        Ok(c) => {
+            info!("Config loaded from {:?}", config_path);
+            c
+        }
         Err(_) => {
+            warn!("Config parse failed, attempting migration");
             #[derive(Deserialize)]
             struct OldConfig {
                 embedding_model: Option<String>,

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -113,6 +114,7 @@ impl EmbeddingProvider for RemoteProvider {
 
         let mut all_embeddings = Vec::with_capacity(texts.len());
         for chunk in texts.chunks(64) {
+            debug!("Remote embedding: {} texts to {}", chunk.len(), self.config.endpoint);
             let request = EmbeddingRequest {
                 model: self.config.model.clone(),
                 input: chunk.to_vec(),
@@ -127,12 +129,14 @@ impl EmbeddingProvider for RemoteProvider {
             }
 
             let response = req.send().await.map_err(|e| {
+                error!("Remote embedding request failed: {}", e);
                 anyhow!("Remote embedding request failed: {}", e)
             })?;
 
             if !response.status().is_success() {
                 let status = response.status();
                 let body = response.text().await.unwrap_or_default();
+                error!("Remote embedding API returned {}: {}", status, body);
                 return Err(anyhow!(
                     "Remote embedding API returned {}: {}",
                     status,
@@ -149,6 +153,7 @@ impl EmbeddingProvider for RemoteProvider {
             }
         }
 
+        trace!("Remote embedding: got {} embeddings total", all_embeddings.len());
         Ok(all_embeddings)
     }
 

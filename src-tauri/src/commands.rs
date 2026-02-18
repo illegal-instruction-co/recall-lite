@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use log::{info, error, debug};
+
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
@@ -33,6 +35,7 @@ pub async fn create_container(
     description: String,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
+    info!("create_container: name=\"{}\"", name);
     let mut config = config_state.config.lock().await;
     if config.containers.contains_key(&name) {
         return Err("Container already exists".to_string());
@@ -52,6 +55,7 @@ pub async fn delete_container(
     config_state: tauri::State<'_, ConfigState>,
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
 ) -> Result<(), String> {
+    info!("delete_container: name=\"{}\"", name);
     {
         let mut config = config_state.config.lock().await;
         if name == "Default" {
@@ -84,6 +88,7 @@ pub async fn set_active_container(
     provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<(), String> {
+    info!("set_active_container: name=\"{}\"", name);
     let mut config = config_state.config.lock().await;
     if !config.containers.contains_key(&name) {
         return Err("Container does not exist".to_string());
@@ -115,6 +120,7 @@ pub async fn search(
     reranker_state: tauri::State<'_, Arc<Mutex<RerankerState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<Vec<SearchResult>, String> {
+    debug!("search: query=\"{}\"", query);
     let table_name = {
         let config = config_state.config.lock().await;
         get_table_name(&config.active_container)
@@ -127,7 +133,10 @@ pub async fn search(
         }
         let provider = guard.provider.as_ref().ok_or("Embedding provider is loading... Please wait a moment.")?;
         provider.embed_query(&query).await
-            .map_err(|e| e.to_string())?
+            .map_err(|e| {
+                error!("Query embedding failed: {}", e);
+                e.to_string()
+            })?
     };
 
     let db = {
@@ -160,6 +169,7 @@ pub async fn search(
     };
 
     let scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, 20);
+    debug!("search: {} results, hybrid={}, reranker={}", scored.len(), used_hybrid, used_reranker);
 
     Ok(scored
         .into_iter()
@@ -180,6 +190,7 @@ pub async fn index_folder(
     config_state: tauri::State<'_, ConfigState>,
     watcher_state: tauri::State<'_, watcher::WatcherState>,
 ) -> Result<String, String> {
+    info!("index_folder: dir=\"{}\"", dir);
     let table_name = {
         let config = config_state.config.lock().await;
         get_table_name(&config.active_container)
@@ -238,6 +249,7 @@ pub async fn reset_index(
     db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<String, String> {
+    info!("reset_index");
     let table_name = {
         let config = config_state.config.lock().await;
         get_table_name(&config.active_container)
@@ -260,6 +272,7 @@ pub async fn reindex_all(
     provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<String, String> {
+    info!("reindex_all");
     let (table_name, paths) = {
         let config = config_state.config.lock().await;
         let info = config.containers.get(&config.active_container)
@@ -385,6 +398,7 @@ pub async fn update_config(
     config_state: tauri::State<'_, ConfigState>,
     provider_state: tauri::State<'_, Arc<Mutex<ProviderState>>>,
 ) -> Result<(), String> {
+    info!("update_config");
     let mut provider_changed = false;
 
     {

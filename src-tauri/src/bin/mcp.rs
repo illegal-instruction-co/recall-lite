@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use log::{info, debug};
+
 use mimalloc::MiMalloc;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::handler::server::tool::ToolRouter;
@@ -143,6 +145,7 @@ impl RememexServer {
         &self,
         Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes, min_score }): Parameters<SearchParams>,
     ) -> Result<CallToolResult, McpError> {
+        debug!("rememex_search: query=\"{}\", container={:?}, top_k={:?}", query, container, top_k);
         let container =
             container.unwrap_or_else(|| self.state.config.active_container.clone());
         let table_name = get_table_name(&container);
@@ -226,6 +229,7 @@ impl RememexServer {
         &self,
         Parameters(ReadFileParams { path, start_line, end_line }): Parameters<ReadFileParams>,
     ) -> Result<CallToolResult, McpError> {
+        debug!("rememex_read_file: path={}, lines={:?}-{:?}", path, start_line, end_line);
         let file_path = PathBuf::from(&path);
 
         let mut authorized = false;
@@ -764,6 +768,11 @@ fn get_app_data_dir() -> std::path::PathBuf {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Stderr)
+        .init();
+
+    info!("MCP server starting...");
     let app_data = get_app_data_dir();
     let models_path = app_data.join("models");
 
@@ -774,6 +783,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config_path = app_data.join("config.json");
     let config = load_config(&config_path);
+    info!("Config loaded, active container: {}", config.active_container);
 
     let provider: Box<dyn EmbeddingProvider> = match &config.embedding_provider {
         EmbeddingProviderConfig::Local { model } => {
@@ -790,6 +800,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Box::new(RemoteProvider::new(rc.clone()))
         }
     };
+    info!("Embedding provider ready");
 
     let reranker = indexer::load_reranker(models_path).ok();
 

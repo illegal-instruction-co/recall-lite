@@ -47,6 +47,9 @@ git2 = "0.20"
 tauri-plugin-autostart = "2"
 reqwest = { version = "0.12", features = ["json"] }
 async-trait = "0.1"
+log = "0.4"
+tauri-plugin-log = "2"
+env_logger = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

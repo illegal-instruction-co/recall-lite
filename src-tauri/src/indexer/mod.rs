@@ -13,6 +13,7 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use arrow_array::RecordBatchIterator;
 use lancedb::connection::Connection;
+use log::{info, debug};
 use rayon::prelude::*;
 use tokio::sync::Mutex;
 
@@ -72,6 +73,8 @@ where
 
     let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
 
+    info!("Indexing directory: {}", root_dir);
+
     let all_files: Vec<_> = WalkBuilder::new(root_dir)
         .hidden(true)
         .git_ignore(true)
@@ -84,6 +87,7 @@ where
         .map(|e| e.into_path())
         .collect();
     let total_files = all_files.len();
+    debug!("Found {} files ({} image, {} text)", total_files, all_files.iter().filter(|p| ocr::is_image_extension(&p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase())).count(), all_files.iter().filter(|p| !ocr::is_image_extension(&p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase())).count());
 
     progress_callback(0, total_files, "Scanning files...".to_string());
 
@@ -198,6 +202,7 @@ where
     let files_indexed = all_extracted.len();
 
     if files_indexed == 0 {
+        info!("No new files to index in {}", root_dir);
         progress_callback(total_files, total_files, "Done -- no new files".to_string());
         return Ok(0);
     }
@@ -295,6 +300,7 @@ where
     progress_callback(files_indexed, files_indexed, "Building search index...".to_string());
     let _ = db::build_fts_index(&table).await;
 
+    info!("Indexing complete: {} files indexed in {}", files_indexed, root_dir);
     Ok(files_indexed)
 }
 
@@ -307,6 +313,7 @@ pub async fn index_single_file(
     chunk_size: Option<usize>,
     chunk_overlap: Option<usize>,
 ) -> Result<bool> {
+    debug!("index_single_file: {}", file_path.display());
     if !file_path.is_file() {
         return Ok(false);
     }
@@ -381,6 +388,7 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
+    debug!("delete_file_from_index: {}", file_path);
     let table = db.open_table(table_name).execute().await?;
     let safe_path = file_path.replace('\'', "''");
     table.delete(&format!("path = '{}'", safe_path)).await?;

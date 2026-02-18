@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
+use log::{debug, trace};
 use chrono::NaiveDateTime;
 use reverse_geocoder::ReverseGeocoder;
 use windows::core::HSTRING;
@@ -13,6 +14,7 @@ pub fn is_image_extension(ext: &str) -> bool {
 }
 
 pub async fn extract_text_from_image(path: &Path) -> Result<String> {
+    debug!("OCR processing: {}", path.display());
     let ocr_text = run_ocr(path).await.unwrap_or_default();
     let exif_text = extract_exif_metadata(path).unwrap_or_default();
 
@@ -28,6 +30,7 @@ pub async fn extract_text_from_image(path: &Path) -> Result<String> {
         return Err(anyhow!("No text or metadata found"));
     }
 
+    trace!("OCR result for {}: {} bytes", path.display(), parts.iter().map(|p| p.len()).sum::<usize>());
     Ok(parts.join("\n\n"))
 }
 

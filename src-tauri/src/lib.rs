@@ -4,10 +4,9 @@ pub mod indexer;
 pub mod state;
 mod watcher;
 
-
 use std::sync::Arc;
-use std::fs;
-use std::io::Write;
+
+use log::{info, error, debug, warn};
 
 
 use tauri::{Emitter, Manager};
@@ -33,6 +32,18 @@ pub fn run() {
     let launch_at_startup = config.launch_at_startup;
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("rememex".into()) }),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+                ])
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepAll)
+                .level(log::LevelFilter::Debug)
+                .build(),
+        )
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -67,12 +78,14 @@ pub fn run() {
             let db_path = app_data.join("lancedb");
             let db_path_str = db_path.to_string_lossy().to_string();
 
+            debug!("Connecting to LanceDB at {:?}", db_path);
             let db = tauri::async_runtime::block_on(async {
                 lancedb::connect(&db_path_str)
                     .execute()
                     .await
                     .expect("Failed to connect to LanceDB")
             });
+            info!("LanceDB connected");
 
             #[cfg(target_os = "windows")]
             {
@@ -141,13 +154,11 @@ pub fn run() {
             let models_path = app_data.join("models");
             std::fs::create_dir_all(&models_path).ok();
 
-            let log_path = app_data.join("rememex.log");
-            let _ = fs::write(&log_path, "Starting provider init...\n");
+            info!("Starting provider init...");
 
             let app_handle = app.handle().clone();
 
             let reranker_models_path = models_path.clone();
-            let reranker_log = log_path.clone();
             let watcher_provider_state = provider_state.clone();
             let watcher_state_for_model = watcher_state.clone();
             let watcher_app = app.handle().clone();
@@ -171,18 +182,14 @@ pub fn run() {
             };
 
             if is_first_run {
-                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                    let _ = writeln!(file, "First run detected — deferring provider init until user configures settings");
-                }
+                info!("First run detected — deferring provider init until user configures settings");
             } else {
                 match embedding_provider_config {
                     EmbeddingProviderConfig::Local { ref model } => {
                         let model_enum = get_embedding_model(model);
 
                         tauri::async_runtime::spawn(async move {
-                            if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                                let _ = writeln!(file, "Loading local model to: {:?}", models_path);
-                            }
+                            info!("Loading local model to: {:?}", models_path);
 
                             let mut attempts = 0;
                             let max_attempts = 3;
@@ -193,9 +200,7 @@ pub fn run() {
                                 attempts += 1;
                                 match indexer::load_model(model_enum.clone(), models_path.clone()) {
                                     Ok(model) => {
-                                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                                            let _ = writeln!(file, "Model loaded successfully");
-                                        }
+                                        info!("Local embedding model loaded successfully");
                                         let model_state = Arc::new(Mutex::new(ModelState {
                                             model: Some(model),
                                             init_error: None,
@@ -220,9 +225,7 @@ pub fn run() {
                                         break;
                                     }
                                     Err(e) => {
-                                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&log_path) {
-                                            let _ = writeln!(file, "Attempt {} failed: {}", attempts, e);
-                                        }
+                                        error!("Model load attempt {} failed: {}", attempts, e);
                                         last_error = Some(e);
                                         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                                     }
@@ -238,8 +241,9 @@ pub fn run() {
                             }
                         });
                     }
-                    EmbeddingProviderConfig::Remote(rc) => {
-                        let remote_provider = indexer::embedding_provider::RemoteProvider::new(rc);
+                    EmbeddingProviderConfig::Remote(ref rc) => {
+                        info!("Initializing remote embedding provider: {}", rc.endpoint);
+                        let remote_provider = indexer::embedding_provider::RemoteProvider::new(rc.clone());
                         let mut guard = provider_state.blocking_lock();
                         guard.provider = Some(Box::new(remote_provider));
                         guard.init_error = None;
@@ -260,21 +264,15 @@ pub fn run() {
             }
 
             tauri::async_runtime::spawn(async move {
-                if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
-                    let _ = writeln!(file, "Loading reranker model...");
-                }
+                info!("Loading reranker model...");
                 match indexer::load_reranker(reranker_models_path) {
                     Ok(reranker) => {
-                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
-                            let _ = writeln!(file, "Reranker loaded successfully");
-                        }
+                        info!("Reranker loaded successfully");
                         let mut state = reranker_state.lock().await;
                         state.reranker = Some(reranker);
                     }
                     Err(e) => {
-                        if let Ok(mut file) = fs::OpenOptions::new().create(true).append(true).open(&reranker_log) {
-                            let _ = writeln!(file, "Reranker load failed (non-fatal): {}", e);
-                        }
+                        warn!("Reranker load failed (non-fatal): {}", e);
                         let mut state = reranker_state.lock().await;
                         state.init_error = Some(e.to_string());
                     }
@@ -285,7 +283,7 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     let legacy_cache = home_dir.join(".fastembed_cache");
                     if legacy_cache.exists() {
-                        let _ = fs::remove_dir_all(&legacy_cache);
+                        let _ = std::fs::remove_dir_all(&legacy_cache);
                     }
                 });
             }
