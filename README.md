@@ -1,5 +1,11 @@
 # Recall Lite
 
+[![GitHub release](https://img.shields.io/github/v/release/illegal-instruction-co/recall-lite?style=flat-square)](https://github.com/illegal-instruction-co/recall-lite/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2B-0078D4?style=flat-square&logo=windows)](https://github.com/illegal-instruction-co/recall-lite/releases)
+[![GitHub stars](https://img.shields.io/github/stars/illegal-instruction-co/recall-lite?style=flat-square)](https://github.com/illegal-instruction-co/recall-lite/stargazers)
+[![Free](https://img.shields.io/badge/price-free%20forever-brightgreen?style=flat-square)](https://github.com/illegal-instruction-co/recall-lite)
+
 semantic search tool for humans and AI agents. you type meaning, it finds files. nothing leaves your machine.
 
 **windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
@@ -7,6 +13,18 @@ semantic search tool for humans and AI agents. you type meaning, it finds files.
 <p align="center">
   <img src="https://github.com/user-attachments/assets/b11b0fc1-3a35-4854-8703-ff98f286a430" width="700" />
 </p>
+
+## why recall-lite?
+| | recall-lite | [ripgrep](https://github.com/BurntSushi/ripgrep) | [Everything](https://www.voidtools.com/) | [Sourcegraph](https://sourcegraph.com/) |
+|---|---|---|---|---|
+| **search type** | semantic + keyword hybrid | regex / literal text | filename (content via `content:`) | keyword + symbol + semantic |
+| **understands meaning** | ✅ | ❌ | ❌ | ✅ |
+| **local & private** | ✅ everything on your machine | ✅ | ✅ | cloud or self-hosted |
+| **file types** | 120+ (code, docs, images, configs) | text files | all files (index by name) | code repos |
+| **image OCR** | ✅ built-in | ❌ | ❌ | ❌ |
+| **EXIF / GPS** | ✅ reverse geocodes to city names | ❌ | ❌ | ❌ |
+| **MCP server** | ✅ built-in for AI agents | ❌ | ❌ | ❌ |
+| **price** | free, open source | free, open source | free | starts at $19/user/mo |
 
 ## what it does
 
