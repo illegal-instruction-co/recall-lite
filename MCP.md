@@ -147,6 +147,57 @@ restart. done.
 
 stdio transport. point at the exe. no args, no env vars, no ports, no docker. just the path.
 
+## teach your agent how to use it
+
+hooking up the MCP server is step 1. step 2 is making sure the AI agent actually knows *how* to use the tools strategically. that's what [AGENT.md](AGENT.md) is for.
+
+every editor has its own way to inject project-level instructions. pick yours:
+
+### cursor
+
+drop a `.cursorrules` file in your project root:
+
+```
+Read the file AGENT.md in this project root for instructions on how to use the recall-lite MCP tools.
+```
+
+or if you use the rules directory, create `.cursor/rules/recall-lite.mdc`:
+
+```
+---
+description: recall-lite MCP tool usage
+globs: *
+alwaysApply: true
+---
+Read the file AGENT.md in this project root for instructions on how to use the recall-lite MCP tools.
+```
+
+### VS code copilot
+
+create `.github/copilot-instructions.md`:
+
+```markdown
+Read the file AGENT.md in this project root for instructions on how to use the recall-lite MCP tools.
+```
+
+copilot auto-reads this file for every conversation in the project.
+
+### antigravity (google)
+
+create `.agent/rules/recall-lite.md`:
+
+```
+Read the file AGENT.md in this project root for instructions on how to use the recall-lite MCP tools.
+```
+
+antigravity loads all `.agent/rules/*.md` files as workspace rules automatically.
+
+### any editor that supports system prompts
+
+copy the contents of [AGENT.md](AGENT.md) into your editor's system prompt or custom instructions field. the file is self-contained, no dependencies.
+
+> using windsurf, zed, claude code, or something else? if you know how project-level agent instructions work in your editor, open a PR and add it here.
+
 ## what happens under the hood
 
 on launch it:

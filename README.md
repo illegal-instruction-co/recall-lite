@@ -17,7 +17,7 @@ local semantic search for windows. you type meaning, it finds files. nothing lea
 - hybrid search: vector + full-text + JINA cross-encoder reranker
 - smart chunking per language (rust at `fn`/`struct`, python at `def`/`class`, etc)
 - semantic containers for isolation (work/personal/research)
-- MCP server for AI agents. [details →](MCP.md)
+- MCP server for AI agents. [details →](MCP.md) · [agent instructions →](AGENT.md)
 
 ## run it
 ```bash
