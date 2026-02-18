@@ -18,6 +18,7 @@ full pipeline. vector search → keyword search → hybrid merge → JINA rerank
 | `file_extensions` | string[]? | all | filter by extension, e.g. `["rs", "ts"]` |
 | `path_prefix` | string? | none | filter by path prefix, e.g. `"src/indexer"` |
 | `context_bytes` | number? | 1500 | snippet size in bytes (max 10000) |
+| `min_score` | number? | 0 | minimum relevance score (0-100), results below this are filtered out |
 
 ### `recall_read_file`
 

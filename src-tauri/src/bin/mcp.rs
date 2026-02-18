@@ -47,6 +47,8 @@ struct SearchParams {
     path_prefix: Option<String>,
     #[schemars(description = "Max snippet size in bytes (default 1500, max 10000)")]
     context_bytes: Option<usize>,
+    #[schemars(description = "Minimum relevance score (0-100). Results below this are filtered out. Default: no filtering.")]
+    min_score: Option<f32>,
 }
 
 
@@ -141,7 +143,7 @@ impl RecallServer {
     )]
     async fn recall_search(
         &self,
-        Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes }): Parameters<SearchParams>,
+        Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes, min_score }): Parameters<SearchParams>,
     ) -> Result<CallToolResult, McpError> {
         let container =
             container.unwrap_or_else(|| self.state.config.active_container.clone());
@@ -179,11 +181,17 @@ impl RecallServer {
             merged.into_iter().take(top_k * 2).collect();
 
         let (final_results, used_reranker) = {
-            let mut guard = self.state.models.lock().await;
-            if let Some(reranker) = guard.reranker.take() {
+            let reranker = {
+                let mut guard = self.state.models.lock().await;
+                guard.reranker.take()
+            };
+            if let Some(reranker) = reranker {
                 let (reranker_back, results, used) =
                     indexer::safe_rerank(reranker, query.clone(), rerank_input.clone()).await;
-                guard.reranker = reranker_back;
+                {
+                    let mut guard = self.state.models.lock().await;
+                    guard.reranker = reranker_back;
+                }
                 if used {
                     (results, true)
                 } else {
@@ -195,6 +203,7 @@ impl RecallServer {
         };
 
         let mut scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, top_k);
+        scored.retain(|item| item.score >= min_score.unwrap_or(0.0));
 
         for item in &mut scored {
             if item.snippet.len() > context_bytes {
@@ -731,7 +740,7 @@ impl ServerHandler for RecallServer {
             },
             instructions: Some(
                 "Recall-Lite: local semantic file search for AI agents. \
-                 Use recall_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes). \
+                 Use recall_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes, min_score). \
                  Use recall_read_file to read file content by path (with optional line range). \
                  Use recall_list_files to browse indexed file paths. \
                  Use recall_index_status to check index health and stats. \

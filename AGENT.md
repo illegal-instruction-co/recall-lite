@@ -73,6 +73,7 @@ use filters to cut noise:
 - `path_prefix`: when you know the rough area
 - `top_k`: start with 5, go up if you need more
 - `context_bytes`: increase to 3000-5000 for complex code, keep at 1500 for quick lookups
+- `min_score`: set to 50-70 to filter noise. if you get 0 results, the query didn't match — rephrase instead of guessing
 
 ## recall_related: the graph you didn't know you had
 

@@ -164,6 +164,8 @@ where
 
         let path_clone = path.clone();
         let use_git = indexing_config.use_git_history;
+        let chunk_size = indexing_config.chunk_size;
+        let chunk_overlap = indexing_config.chunk_overlap;
         image_futures.push(tokio::spawn(async move {
             if let Some(mut text) = file_io::read_file_content_with_ocr(&path_clone).await {
                 if !text.trim().is_empty() {
@@ -177,7 +179,7 @@ where
                         .and_then(|s| s.to_str())
                         .unwrap_or("")
                         .to_lowercase();
-                    let chunks = chunking::semantic_chunk(&text, &ext);
+                    let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
                     return Some(ExtractedFile {
                         path: path_clone.to_string_lossy().to_string(),
                         chunks,
@@ -306,6 +308,8 @@ pub async fn index_single_file(
     db: &Connection,
     model_state: &Arc<Mutex<ModelState>>,
     use_git_history: bool,
+    chunk_size: Option<usize>,
+    chunk_overlap: Option<usize>,
 ) -> Result<bool> {
     if !file_path.is_file() {
         return Ok(false);
@@ -347,7 +351,7 @@ pub async fn index_single_file(
         }
     }
 
-    let chunks = chunking::semantic_chunk(&text, &ext);
+    let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
     if chunks.is_empty() {
         return Ok(false);
     }
@@ -381,11 +385,8 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
-    let table = match db.open_table(table_name).execute().await {
-        Ok(t) => t,
-        Err(_) => return Ok(()),
-    };
+    let table = db.open_table(table_name).execute().await?;
     let safe_path = file_path.replace('\'', "''");
-    let _ = table.delete(&format!("path = '{}'", safe_path)).await;
+    table.delete(&format!("path = '{}'", safe_path)).await?;
     Ok(())
 }
