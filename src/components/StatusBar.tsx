@@ -13,7 +13,7 @@ interface StatusBarProps {
 
 export default function StatusBar({
     status, isIndexing, indexProgress, activeContainer, indexedFolderCount, resultCount,
-}: StatusBarProps) {
+}: Readonly<StatusBarProps>) {
     const { t } = useLocale();
 
     const pct = indexProgress && indexProgress.total > 0
