@@ -183,10 +183,11 @@ pub async fn search_fts(
     };
 
     let fts_query = FullTextSearchQuery::new(query.to_string());
+    let search_limit = if multi_chunk { limit * 3 } else { limit * 2 };
     let mut q = table
         .query()
         .full_text_search(fts_query)
-        .limit(limit);
+        .limit(search_limit);
 
     if let Some(filter) = build_filter_expr(path_prefix, file_extensions) {
         q = q.only_if(filter);

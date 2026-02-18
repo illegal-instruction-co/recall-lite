@@ -169,7 +169,7 @@ first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weigh
 
 **access denied on read_file** -- the file isn't inside any indexed container path. index the parent folder first
 
-**recall_diff returns nothing** -- the mtime in the index reflects when files were last indexed, not last edited. re-index after edits
+**recall_diff returns nothing** -- if the main app was closed while files were edited, mtime in the index is stale. open the app and let the file watcher catch up
 
 **recall_related says file not found** -- the file hasn't been indexed yet. index first, search second
 

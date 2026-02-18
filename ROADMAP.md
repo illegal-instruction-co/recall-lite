@@ -11,7 +11,7 @@
   - ~~agents can browse project structure~~ done -- `recall_list_files` with filters
   - ~~agents can check index health~~ done -- `recall_index_status`
   - tree-sitter based chunking. split on function/class boundaries instead of byte counts
-  - agent-triggered indexing via MCP (so agents can index new folders themselves)
+  - ~~agent-triggered indexing~~ **intentionally excluded** -- indexing takes minutes and agents shouldn't silently index folders. users pick what to index from the GUI. that's a security boundary, not a missing feature
   - the goal: make recall-lite the local private alternative to greptile/sourcegraph for AI-assisted coding
 - **linux / mac** -- need cross-platform alternatives for OCR and mica backdrop
 - **more file types** -- always
