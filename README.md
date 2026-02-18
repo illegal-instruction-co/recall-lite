@@ -4,10 +4,8 @@ semantic search tool for humans and AI agents. you type meaning, it finds files.
 
 **windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
 
-
-![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
-
 ![Search](https://github.com/user-attachments/assets/98407df3-1984-4f3d-9cd5-21cbfdc4cb85)
+
 
 ## what it does
 
@@ -46,6 +44,8 @@ same 5 tasks, same codebase. grep vs recall-lite MCP:
 **grep needs the exact keyword. recall-lite needs the idea.**
 
 agents using recall-lite are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 — that's both speed and cost.
+
+![McpSearch](https://github.com/user-attachments/assets/35ce8fb8-b24f-4a45-86fb-80e0eae9baa3)
 
 ## stack
 rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base, JINA Reranker v2, rayon
