@@ -1,6 +1,6 @@
 [package]
 name = "recall-lite"
-version = "1.7.0"
+version = "1.8.0"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"

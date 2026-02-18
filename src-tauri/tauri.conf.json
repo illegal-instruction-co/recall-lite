@@ -1,7 +1,7 @@
-{
+﻿{
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Recall-Lite",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "identifier": "com.recall-lite.app",
   "build": {
     "beforeDevCommand": "npm run dev",
