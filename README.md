@@ -16,6 +16,10 @@
   semantic search tool for humans and AI agents. you type meaning, it finds files. nothing leaves your machine.
 </p>
 
+<p align="center">
+  <em>named after Vannevar Bush's <a href="https://en.wikipedia.org/wiki/Memex">Memex</a> (1945) — a vision of a device that stores and retrieves all human knowledge.</em>
+</p>
+
 ---
 
 **windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
