@@ -1,6 +1,6 @@
 [package]
 name = "recall-lite"
-version = "1.8.0"
+version = "2.0.0"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"
@@ -8,52 +8,72 @@ default-run = "recall-lite"
 
 [lib]
 name = "recall_lite_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [[bin]]
 name = "recall-mcp"
 path = "src/bin/mcp.rs"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+winres = "0.1"
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
+# UI - pure Rust native
+eframe = { version = "0.33", default-features = false, features = ["wgpu", "default_fonts"] }
+window-vibrancy = "0.7.1"
+global-hotkey = "0.7"
+tray-icon = "0.21"
+rfd = "0.15"
+open = "5"
+auto-launch = "0.5"
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+# Core
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "time"] }
+anyhow = "1"
+futures = { version = "0.3", default-features = false, features = ["alloc"] }
+
+# Search & Indexing
 lancedb = "0.26"
 arrow-array = "57"
 arrow-schema = "57"
 fastembed = "5"
 pdf-extract = "0.10"
 regex = "1"
-futures = { version = "0.3", default-features = false, features = ["alloc"] }
-anyhow = "1"
 rayon = "1.10"
+
+# File watching
+notify-debouncer-full = "0.5"
+ignore = "0.4"
+
+# Image metadata
 kamadak-exif = "0.5"
 reverse_geocoder = "4"
 chrono = "0.4"
-mimalloc = { version = "0.1", default-features = false }
-tauri-plugin-global-shortcut = "2"
-window-vibrancy = "0.7.1"
+
+# MCP server
 rmcp = { version = "0.15", features = ["server", "transport-io", "schemars"] }
 schemars = "0.8"
-notify-debouncer-full = "0.5"
-ignore = "0.4"
-tauri-plugin-autostart = "2"
+
+# Performance
+mimalloc = { version = "0.1", default-features = false }
+
+# Locale detection
+sys-locale = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61", features = [
+windows = { version = ">=0.59, <=0.62", features = [
     "Graphics_Imaging",
     "Media_Ocr",
     "Storage",
     "Storage_Streams",
     "Globalization",
+    "Win32_System_WinRT",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
 ] }
-tauri-plugin-opener = "2.5.3"
 
 [profile.release]
 opt-level = 3

@@ -3,17 +3,19 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use notify_debouncer_full::notify::{self, RecursiveMode};
-use tauri::{AppHandle, Emitter};
+use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use tokio::sync::Mutex;
 
 use crate::config::{get_table_name, ConfigState};
+use crate::events::{AppEvent, EventSender};
 use crate::indexer;
-use crate::state::{IndexingProgress, ModelState};
+use crate::state::ModelState;
 
 fn build_gitignore(roots: &[String]) -> Option<ignore::gitignore::Gitignore> {
-    if roots.is_empty() { return None; }
+    if roots.is_empty() {
+        return None;
+    }
     let mut builder = ignore::gitignore::GitignoreBuilder::new(&roots[0]);
     for root in roots {
         let gi = std::path::Path::new(root).join(".gitignore");
@@ -43,7 +45,7 @@ pub async fn restart(
     config_state: &ConfigState,
     db: lancedb::Connection,
     model_state: Arc<Mutex<ModelState>>,
-    app: AppHandle,
+    tx: EventSender,
 ) {
     let handle = {
         let config = config_state.config.lock().await;
@@ -54,7 +56,7 @@ pub async fn restart(
             .map(|info| info.indexed_paths.clone())
             .unwrap_or_default();
         drop(config);
-        start_watcher(paths, db, model_state, table_name, app)
+        start_watcher(paths, db, model_state, table_name, tx)
     };
 
     let mut guard = watcher_state.lock().await;
@@ -66,19 +68,23 @@ fn start_watcher(
     db: lancedb::Connection,
     model_state: Arc<Mutex<ModelState>>,
     table_name: String,
-    app: AppHandle,
+    tx: EventSender,
 ) -> Option<WatcherHandle> {
     if paths.is_empty() {
         return None;
     }
 
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (notify_tx, notify_rx) = std::sync::mpsc::channel();
 
-    let mut debouncer = match new_debouncer(Duration::from_millis(500), None, move |result: DebounceEventResult| {
-        if let Ok(events) = result {
-            let _ = tx.send(events);
-        }
-    }) {
+    let mut debouncer = match new_debouncer(
+        Duration::from_millis(500),
+        None,
+        move |result: DebounceEventResult| {
+            if let Ok(events) = result {
+                let _ = notify_tx.send(events);
+            }
+        },
+    ) {
         Ok(d) => d,
         Err(_) => return None,
     };
@@ -93,7 +99,7 @@ fn start_watcher(
     let rt = tokio::runtime::Handle::current();
     let indexing_lock = Arc::new(Mutex::new(()));
     std::thread::spawn(move || {
-        while let Ok(events) = rx.recv() {
+        while let Ok(events) = notify_rx.recv() {
             let mut changed: HashSet<PathBuf> = HashSet::new();
             let mut deleted: HashSet<PathBuf> = HashSet::new();
 
@@ -131,7 +137,7 @@ fn start_watcher(
             let db = db.clone();
             let ms = model_state.clone();
             let tn = table_name.clone();
-            let app = app.clone();
+            let tx = tx.clone();
             let lock = indexing_lock.clone();
             let changed: Vec<PathBuf> = changed.into_iter().collect();
             let deleted: Vec<PathBuf> = deleted.into_iter().collect();
@@ -140,7 +146,7 @@ fn start_watcher(
             rt.spawn(async move {
                 let _guard = lock.lock().await;
 
-                let _ = app.emit("indexing-progress", IndexingProgress {
+                let _ = tx.send(AppEvent::IndexingProgress {
                     current: 0,
                     total,
                     path: format!("Auto-reindexing {} files...", total),
@@ -157,17 +163,22 @@ fn start_watcher(
                 for path in &changed {
                     let _ = indexer::index_single_file(path, &tn, &db, &ms).await;
                     count += 1;
-                    let _ = app.emit("indexing-progress", IndexingProgress {
+                    let _ = tx.send(AppEvent::IndexingProgress {
                         current: count,
                         total,
                         path: path.to_string_lossy().to_string(),
                     });
                 }
 
-                let _ = app.emit("indexing-complete", format!("{} files auto-reindexed", count));
+                let _ = tx.send(AppEvent::IndexingComplete(format!(
+                    "{} files auto-reindexed",
+                    count
+                )));
             });
         }
     });
 
-    Some(WatcherHandle { _debouncer: debouncer })
+    Some(WatcherHandle {
+        _debouncer: debouncer,
+    })
 }

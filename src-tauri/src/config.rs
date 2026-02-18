@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use global_hotkey::hotkey::{Code, HotKey, Modifiers};
 use serde::{Deserialize, Serialize};
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 use tokio::sync::Mutex;
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -45,12 +45,15 @@ pub struct Config {
     pub always_on_top: bool,
     #[serde(default)]
     pub launch_at_startup: bool,
+    #[serde(default = "default_locale")]
+    pub locale: String,
     pub containers: HashMap<String, ContainerInfo>,
     pub active_container: String,
 }
 
 fn default_schema() -> String {
-    "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json".to_string()
+    "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json"
+        .to_string()
 }
 
 fn default_hotkey() -> String {
@@ -61,13 +64,20 @@ fn default_true() -> bool {
     true
 }
 
+fn default_locale() -> String {
+    "auto".to_string()
+}
+
 impl Default for Config {
     fn default() -> Self {
         let mut containers = HashMap::new();
-        containers.insert("Default".to_string(), ContainerInfo {
-            description: String::new(),
-            indexed_paths: Vec::new(),
-        });
+        containers.insert(
+            "Default".to_string(),
+            ContainerInfo {
+                description: String::new(),
+                indexed_paths: Vec::new(),
+            },
+        );
         Self {
             schema: default_schema(),
             embedding_model: "MultilingualE5Base".to_string(),
@@ -75,13 +85,14 @@ impl Default for Config {
             hotkey: default_hotkey(),
             always_on_top: true,
             launch_at_startup: false,
+            locale: default_locale(),
             containers,
             active_container: "Default".to_string(),
         }
     }
 }
 
-pub fn parse_hotkey(s: &str) -> Shortcut {
+pub fn parse_hotkey(s: &str) -> HotKey {
     let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
     let mut mods = Modifiers::empty();
     let mut key_str = "";
@@ -172,13 +183,16 @@ pub fn parse_hotkey(s: &str) -> Shortcut {
         "/" | "slash" => Code::Slash,
         "`" | "backquote" => Code::Backquote,
         _ => {
-            eprintln!("[config] unrecognized hotkey key: '{}', falling back to Space", key_str);
+            eprintln!(
+                "[config] unrecognized hotkey key: '{}', falling back to Space",
+                key_str
+            );
             Code::Space
         }
     };
 
     let mods_opt = if mods.is_empty() { None } else { Some(mods) };
-    Shortcut::new(mods_opt, code)
+    HotKey::new(mods_opt, code)
 }
 
 pub struct ConfigState {
@@ -192,16 +206,25 @@ impl ConfigState {
         let content = serde_json::to_string_pretty(&*config).map_err(|e| e.to_string())?;
         std::fs::write(&self.path, content).map_err(|e| e.to_string())
     }
+
+    pub fn save_blocking(&self) -> Result<(), String> {
+        let config = self.config.blocking_lock();
+        let content = serde_json::to_string_pretty(&*config).map_err(|e| e.to_string())?;
+        std::fs::write(&self.path, content).map_err(|e| e.to_string())
+    }
 }
 
 pub fn get_table_name(container: &str) -> String {
-    let sanitized: String = container.chars().map(|c| {
-        if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
-            c.to_string()
-        } else {
-            format!("{:04x}", c as u32)
-        }
-    }).collect();
+    let sanitized: String = container
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                c.to_string()
+            } else {
+                format!("{:04x}", c as u32)
+            }
+        })
+        .collect();
     format!("c_{}", sanitized)
 }
 
@@ -236,26 +259,39 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                 let mut containers = HashMap::new();
                 if let Some(names) = old.containers {
                     for name in names {
-                        containers.insert(name, ContainerInfo {
-                            description: String::new(),
-                            indexed_paths: Vec::new(),
-                        });
+                        containers.insert(
+                            name,
+                            ContainerInfo {
+                                description: String::new(),
+                                indexed_paths: Vec::new(),
+                            },
+                        );
                     }
                 }
                 if containers.is_empty() {
-                    containers.insert("Default".to_string(), ContainerInfo {
-                        description: String::new(),
-                        indexed_paths: Vec::new(),
-                    });
+                    containers.insert(
+                        "Default".to_string(),
+                        ContainerInfo {
+                            description: String::new(),
+                            indexed_paths: Vec::new(),
+                        },
+                    );
                 }
-                let default_active = containers.keys().next().cloned().unwrap_or_else(|| "Default".to_string());
+                let default_active = containers
+                    .keys()
+                    .next()
+                    .cloned()
+                    .unwrap_or_else(|| "Default".to_string());
                 Config {
                     schema: default_schema(),
-                    embedding_model: old.embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
+                    embedding_model: old
+                        .embedding_model
+                        .unwrap_or_else(|| "MultilingualE5Base".to_string()),
                     indexing: IndexingConfig::default(),
                     hotkey: default_hotkey(),
                     always_on_top: true,
                     launch_at_startup: false,
+                    locale: default_locale(),
                     active_container: old.active_container.unwrap_or(default_active),
                     containers,
                 }

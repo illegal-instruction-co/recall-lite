@@ -19,11 +19,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -37,9 +32,13 @@ jobs:
       - name: Install Protoc
         run: choco install protoc
 
+      - name: Build GUI binary (release)
+        run: cargo build --release
+        working-directory: src-tauri
 
-      - name: Install frontend dependencies
-        run: npm install
+      - name: Build MCP server binary (release)
+        run: cargo build --bin recall-mcp --release
+        working-directory: src-tauri
 
       - name: Get tag message
         id: tag_msg
@@ -50,26 +49,16 @@ jobs:
           git tag -l --format='%(contents)' ${{ github.ref_name }} >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          args: --verbose
-          releaseName: "Recall Lite ${{ github.ref_name }}"
-          releaseBody: ${{ steps.tag_msg.outputs.message }}
-          releaseDraft: false
-          prerelease: false
-
-      - name: Build MCP server binary
-        run: cargo build --bin recall-mcp --release
-        working-directory: src-tauri
-
-      - name: Upload MCP binary to release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: src-tauri/target/release/recall-mcp.exe
+          name: "Recall Lite ${{ github.ref_name }}"
+          body: ${{ steps.tag_msg.outputs.message }}
+          draft: false
+          prerelease: false
+          files: |
+            src-tauri/target/release/recall-lite.exe
+            src-tauri/target/release/recall-mcp.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

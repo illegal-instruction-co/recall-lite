@@ -1,54 +1,56 @@
 use std::sync::Arc;
 
-use tauri::Emitter;
 use tokio::sync::Mutex;
 
 use crate::config::{get_table_name, ConfigState};
+use crate::events::{AppEvent, EventSender};
 use crate::indexer;
 use crate::state::{
-    ContainerListItem, DbState, IndexingProgress, ModelState, RerankerState, SearchResult,
+    ContainerListItem, DbState, ModelState, RerankerState, SearchResult,
 };
 use crate::watcher;
 
-#[tauri::command]
 pub async fn get_containers(
-    config_state: tauri::State<'_, ConfigState>,
+    config_state: &ConfigState,
 ) -> Result<(Vec<ContainerListItem>, String), String> {
     let config = config_state.config.lock().await;
-    let list: Vec<ContainerListItem> = config.containers.iter().map(|(name, info)| {
-        ContainerListItem {
+    let list: Vec<ContainerListItem> = config
+        .containers
+        .iter()
+        .map(|(name, info)| ContainerListItem {
             name: name.clone(),
             description: info.description.clone(),
             indexed_paths: info.indexed_paths.clone(),
-        }
-    }).collect();
+        })
+        .collect();
     Ok((list, config.active_container.clone()))
 }
 
-#[tauri::command]
 pub async fn create_container(
     name: String,
     description: String,
-    config_state: tauri::State<'_, ConfigState>,
+    config_state: &ConfigState,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
     if config.containers.contains_key(&name) {
         return Err("Container already exists".to_string());
     }
-    config.containers.insert(name, crate::config::ContainerInfo {
-        description,
-        indexed_paths: Vec::new(),
-    });
+    config.containers.insert(
+        name,
+        crate::config::ContainerInfo {
+            description,
+            indexed_paths: Vec::new(),
+        },
+    );
     drop(config);
     config_state.save().await?;
     Ok(())
 }
 
-#[tauri::command]
 pub async fn delete_container(
     name: String,
-    config_state: tauri::State<'_, ConfigState>,
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
+    config_state: &ConfigState,
+    db_state: &Arc<Mutex<DbState>>,
 ) -> Result<(), String> {
     {
         let mut config = config_state.config.lock().await;
@@ -73,14 +75,13 @@ pub async fn delete_container(
     Ok(())
 }
 
-#[tauri::command]
 pub async fn set_active_container(
-    app: tauri::AppHandle,
     name: String,
-    config_state: tauri::State<'_, ConfigState>,
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
-    watcher_state: tauri::State<'_, watcher::WatcherState>,
+    config_state: &ConfigState,
+    db_state: &Arc<Mutex<DbState>>,
+    model_state: &Arc<Mutex<ModelState>>,
+    watcher_state: &watcher::WatcherState,
+    tx: EventSender,
 ) -> Result<(), String> {
     let mut config = config_state.config.lock().await;
     if !config.containers.contains_key(&name) {
@@ -94,24 +95,17 @@ pub async fn set_active_container(
         let guard = db_state.lock().await;
         guard.db.clone()
     };
-    watcher::restart(
-        watcher_state.inner(),
-        config_state.inner(),
-        db,
-        model_state.inner().clone(),
-        app,
-    ).await;
+    watcher::restart(watcher_state, config_state, db, model_state.clone(), tx).await;
 
     Ok(())
 }
 
-#[tauri::command]
 pub async fn search(
     query: String,
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
-    reranker_state: tauri::State<'_, Arc<Mutex<RerankerState>>>,
-    config_state: tauri::State<'_, ConfigState>,
+    db_state: &Arc<Mutex<DbState>>,
+    model_state: &Arc<Mutex<ModelState>>,
+    reranker_state: &Arc<Mutex<RerankerState>>,
+    config_state: &ConfigState,
 ) -> Result<Vec<SearchResult>, String> {
     let table_name = {
         let config = config_state.config.lock().await;
@@ -123,9 +117,11 @@ pub async fn search(
         if let Some(err) = &guard.init_error {
             return Err(format!("Model failed to load: {}", err));
         }
-        let model = guard.model.as_mut().ok_or("AI model is loading... Please wait a moment.")?;
-        indexer::embed_query(model, &query)
-            .map_err(|e| e.to_string())?
+        let model = guard
+            .model
+            .as_mut()
+            .ok_or("AI model is loading... Please wait a moment.")?;
+        indexer::embed_query(model, &query).map_err(|e| e.to_string())?
     };
 
     let db = {
@@ -135,7 +131,8 @@ pub async fn search(
 
     let query_variants = indexer::expand_query(&query);
 
-    let vector_fut = indexer::search_files(&db, &table_name, &query_vector, 50, None, None, false);
+    let vector_fut =
+        indexer::search_files(&db, &table_name, &query_vector, 50, None, None, false);
 
     let fts_db = db.clone();
     let fts_table_name = table_name.clone();
@@ -200,7 +197,11 @@ pub async fn search(
             .map(|(path, snippet, raw_score)| {
                 let sigmoid = 1.0 / (1.0 + (-raw_score).exp());
                 let pct = sigmoid * 100.0;
-                SearchResult { path, snippet, score: pct }
+                SearchResult {
+                    path,
+                    snippet,
+                    score: pct,
+                }
             })
             .collect()
     } else if used_hybrid {
@@ -208,8 +209,16 @@ pub async fn search(
         final_results
             .into_iter()
             .map(|(path, snippet, rrf_score)| {
-                let pct = if max_rrf > 0.0 { (rrf_score / max_rrf) * 100.0 } else { 0.0 };
-                SearchResult { path, snippet, score: pct }
+                let pct = if max_rrf > 0.0 {
+                    (rrf_score / max_rrf) * 100.0
+                } else {
+                    0.0
+                };
+                SearchResult {
+                    path,
+                    snippet,
+                    score: pct,
+                }
             })
             .collect()
     } else {
@@ -218,12 +227,20 @@ pub async fn search(
             .map(|(path, snippet, cosine_dist)| {
                 let similarity = (1.0 - cosine_dist).clamp(0.0, 1.0);
                 let pct = similarity * 100.0;
-                SearchResult { path, snippet, score: pct }
+                SearchResult {
+                    path,
+                    snippet,
+                    score: pct,
+                }
             })
             .collect()
     };
 
-    scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    scored.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     if used_reranker {
         scored.retain(|r| r.score >= 25.0);
     }
@@ -232,14 +249,13 @@ pub async fn search(
     Ok(scored)
 }
 
-#[tauri::command]
 pub async fn index_folder(
-    app: tauri::AppHandle,
     dir: String,
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
-    config_state: tauri::State<'_, ConfigState>,
-    watcher_state: tauri::State<'_, watcher::WatcherState>,
+    db_state: &Arc<Mutex<DbState>>,
+    model_state: &Arc<Mutex<ModelState>>,
+    config_state: &ConfigState,
+    watcher_state: &watcher::WatcherState,
+    tx: EventSender,
 ) -> Result<String, String> {
     let table_name = {
         let config = config_state.config.lock().await;
@@ -263,42 +279,49 @@ pub async fn index_folder(
         guard.db.clone()
     };
 
-    let ms = model_state.inner().clone();
-    let app_handle = app.clone();
+    let ms = model_state.clone();
+    let progress_tx = tx.clone();
 
     let indexing_config = {
         let config = config_state.config.lock().await;
         config.indexing.clone()
     };
 
-    let count = indexer::index_directory(&dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
-        let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
-    })
+    let count = indexer::index_directory(
+        &dir,
+        &table_name,
+        &db,
+        &ms,
+        &indexing_config,
+        move |current, total, path| {
+            let _ = progress_tx.send(AppEvent::IndexingProgress {
+                current,
+                total,
+                path,
+            });
+        },
+    )
     .await
     .map_err(|e| e.to_string())?;
 
-    let _ = app.emit("indexing-complete", format!("{} files indexed", count));
+    let _ = tx.send(AppEvent::IndexingComplete(format!(
+        "{} files indexed",
+        count
+    )));
 
     let db2 = {
         let guard = db_state.lock().await;
         guard.db.clone()
     };
-    watcher::restart(
-        watcher_state.inner(),
-        config_state.inner(),
-        db2,
-        model_state.inner().clone(),
-        app,
-    ).await;
+    watcher::restart(watcher_state, config_state, db2, model_state.clone(), tx).await;
 
     Ok(format!("Indexed {} files", count))
 }
 
-#[tauri::command]
 pub async fn reset_index(
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    config_state: tauri::State<'_, ConfigState>,
-) -> Result<String, String> {
+    db_state: &Arc<Mutex<DbState>>,
+    config_state: &ConfigState,
+) -> Result<(), String> {
     let table_name = {
         let config = config_state.config.lock().await;
         get_table_name(&config.active_container)
@@ -310,22 +333,25 @@ pub async fn reset_index(
     };
     indexer::reset_index(&path, &table_name)
         .await
-        .map_err(|e| e.to_string())?;
-    Ok("Index cleared successfully".to_string())
+        .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
 pub async fn reindex_all(
-    app: tauri::AppHandle,
-    db_state: tauri::State<'_, Arc<Mutex<DbState>>>,
-    model_state: tauri::State<'_, Arc<Mutex<ModelState>>>,
-    config_state: tauri::State<'_, ConfigState>,
+    db_state: &Arc<Mutex<DbState>>,
+    model_state: &Arc<Mutex<ModelState>>,
+    config_state: &ConfigState,
+    tx: EventSender,
 ) -> Result<String, String> {
     let (table_name, paths) = {
         let config = config_state.config.lock().await;
-        let info = config.containers.get(&config.active_container)
+        let info = config
+            .containers
+            .get(&config.active_container)
             .ok_or("Active container not found")?;
-        (get_table_name(&config.active_container), info.indexed_paths.clone())
+        (
+            get_table_name(&config.active_container),
+            info.indexed_paths.clone(),
+        )
     };
 
     if paths.is_empty() {
@@ -337,7 +363,7 @@ pub async fn reindex_all(
         guard.db.clone()
     };
 
-    let ms = model_state.inner().clone();
+    let ms = model_state.clone();
 
     let indexing_config = {
         let config = config_state.config.lock().await;
@@ -346,16 +372,35 @@ pub async fn reindex_all(
 
     let mut total = 0;
     for dir in &paths {
-        let app_handle = app.clone();
-        let count = indexer::index_directory(dir, &table_name, &db, &ms, &indexing_config, move |current, total, path| {
-            let _ = app_handle.emit("indexing-progress", IndexingProgress { current, total, path });
-        })
+        let progress_tx = tx.clone();
+        let count = indexer::index_directory(
+            dir,
+            &table_name,
+            &db,
+            &ms,
+            &indexing_config,
+            move |current, total, path| {
+                let _ = progress_tx.send(AppEvent::IndexingProgress {
+                    current,
+                    total,
+                    path,
+                });
+            },
+        )
         .await
         .map_err(|e| e.to_string())?;
         total += count;
     }
 
-    let _ = app.emit("indexing-complete", format!("{} files reindexed from {} folders", total, paths.len()));
+    let _ = tx.send(AppEvent::IndexingComplete(format!(
+        "{} files reindexed from {} folders",
+        total,
+        paths.len()
+    )));
 
-    Ok(format!("Reindexed {} files from {} folders", total, paths.len()))
+    Ok(format!(
+        "Reindexed {} files from {} folders",
+        total,
+        paths.len()
+    ))
 }

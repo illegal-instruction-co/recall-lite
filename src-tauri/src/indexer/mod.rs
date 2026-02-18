@@ -259,7 +259,9 @@ where
             .await?;
     }
 
-    let total_indexed = total_files - image_files.len() + files_indexed;
+    // Utiliser files_indexed comme approximation du volume total dans la table
+    // pour décider si l'index ANN vaut le coup d'être construit.
+    let total_indexed = files_indexed;
 
     if total_indexed >= ANN_INDEX_THRESHOLD {
         progress_callback(files_indexed, files_indexed, "Building vector index...".to_string());
@@ -348,8 +350,9 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
-    let dim = 768;
-    let table = match db::get_or_create_table(db, table_name, dim).await {
+    // Ouvrir la table existante sans créer ni recréer (évite la destruction
+    // de l'index si la dimension ne correspond pas au modèle actuel).
+    let table = match db.open_table(table_name).execute().await {
         Ok(t) => t,
         Err(_) => return Ok(()),
     };

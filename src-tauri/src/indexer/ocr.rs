@@ -212,9 +212,10 @@ fn reverse_geocode(lat: f64, lon: f64) -> String {
 fn parse_gps_coord(exif: &exif::Exif, coord_tag: exif::Tag, ref_tag: exif::Tag) -> Option<f64> {
     let field = exif.get_field(coord_tag, exif::In::PRIMARY)?;
     let values: Vec<f64> = match &field.value {
-        exif::Value::Rational(rats) => {
-            rats.iter().map(|r| r.num as f64 / r.denom as f64).collect()
-        }
+        exif::Value::Rational(rats) => rats
+            .iter()
+            .map(|r| if r.denom == 0 { 0.0 } else { r.num as f64 / r.denom as f64 })
+            .collect(),
         _ => return None,
     };
     if values.len() < 3 {

@@ -15,14 +15,14 @@ pub struct RerankerState {
     pub init_error: Option<String>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Clone)]
 pub struct SearchResult {
     pub path: String,
     pub snippet: String,
     pub score: f32,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Clone)]
 pub struct IndexingProgress {
     pub current: usize,
     pub total: usize,
