@@ -171,7 +171,10 @@ pub fn parse_hotkey(s: &str) -> Shortcut {
         "." | "period" => Code::Period,
         "/" | "slash" => Code::Slash,
         "`" | "backquote" => Code::Backquote,
-        _ => Code::Space,
+        _ => {
+            eprintln!("[config] unrecognized hotkey key: '{}', falling back to Space", key_str);
+            Code::Space
+        }
     };
 
     let mods_opt = if mods.is_empty() { None } else { Some(mods) };

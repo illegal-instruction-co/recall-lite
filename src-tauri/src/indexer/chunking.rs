@@ -116,7 +116,7 @@ pub fn semantic_chunk_with_overrides(
 ) -> Vec<String> {
     let mut config = get_chunk_config(ext);
     if let Some(size) = chunk_size {
-        config.max_bytes = size;
+        config.max_bytes = size.max(100);
     }
     if let Some(overlap) = chunk_overlap {
         config.overlap_bytes = overlap;

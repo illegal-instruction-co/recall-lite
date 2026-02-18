@@ -191,6 +191,10 @@ pub fn read_file_content_with_config(path: &Path, config: &IndexingConfig) -> Op
         "dockerfile" | "makefile" | ".gitignore" | ".env" | ".editorconfig"
     );
 
+    if config.excluded_extensions.iter().any(|e| e == &ext) {
+        return None;
+    }
+
     if is_text_extension_with_config(&ext, config) || is_dotfile {
         fs::read_to_string(path).ok()
     } else if ext == "pdf" {
