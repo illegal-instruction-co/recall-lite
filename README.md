@@ -56,5 +56,25 @@ rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base,
 ## roadmap
 [ROADMAP.md](ROADMAP.md)
 
+## star history
+
+<a href="https://star-history.com/#illegal-instruction-co/recall-lite&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=illegal-instruction-co/recall-lite&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=illegal-instruction-co/recall-lite&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=illegal-instruction-co/recall-lite&type=Date" />
+ </picture>
+</a>
+
+## contributors
+
+<a href="https://github.com/illegal-instruction-co/recall-lite/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=illegal-instruction-co/recall-lite" />
+</a>
+
+## contributing
+
+[CONTRIBUTING.md](CONTRIBUTING.md)
+
 ## license
 MIT

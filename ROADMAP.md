@@ -13,7 +13,16 @@
   - tree-sitter based chunking. split on function/class boundaries instead of byte counts
   - ~~agent-triggered indexing~~ **intentionally excluded** -- indexing takes minutes and agents shouldn't silently index folders. users pick what to index from the GUI. that's a security boundary, not a missing feature
   - the goal: make recall-lite the local private alternative to greptile/sourcegraph for AI-assisted coding
-- **linux / mac** -- need cross-platform alternatives for OCR and mica backdrop
+- **macOS** -- next priority after current roadmap items:
+  - OCR: `Vision.framework` (built-in, no deps)
+  - backdrop: vibrancy already supported via `window-vibrancy`
+  - packaging: `.dmg` installer + homebrew formula
+  - global hotkey: already cross-platform via tauri plugin
+- **linux** -- after macOS:
+  - OCR: `tesseract` (widely available, package manager install)
+  - backdrop: skip or basic transparency (no native equivalent)
+  - packaging: `.AppImage` + `.deb` + flatpak
+  - global hotkey: X11/Wayland support via tauri plugin
 - ~~**git history indexing**~~ done -- appends last 50 commit messages to file content before embedding. search "why was this changed" and it finds the commit. no git? no problem, just skips
 - **more file types** -- always
 
