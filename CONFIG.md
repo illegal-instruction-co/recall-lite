@@ -1,22 +1,52 @@
-# config
+# Configuration
 
 `%AppData%\com.recall-lite.app\config.json`
 
-the app creates this on first run. you can hand-edit it. if you break the JSON, it'll reset to defaults and migrate what it can. don't worry about it.
+Created on first launch with safe defaults. Hand-editable. If the JSON is malformed, the app resets to defaults and migrates what it can recover.
 
-## schema validation
+---
 
-want autocomplete and red squiggles in your editor? add this to the top of your config.json:
+## Structure
+
+```mermaid
+graph LR
+    CFG["config.json"]
+
+    CFG --> EM["embedding_model\nstring"]
+    CFG --> HK["hotkey\nstring"]
+    CFG --> AOT["always_on_top\nbool"]
+    CFG --> LAS["launch_at_startup\nbool"]
+    CFG --> LC["locale\nstring"]
+    CFG --> IDX["indexing\nobject"]
+    CFG --> CT["containers\nmap"]
+
+    IDX --> EE["extra_extensions\nstring[]"]
+    IDX --> XE["excluded_extensions\nstring[]"]
+    IDX --> CS["chunk_size\nnumber?"]
+    IDX --> CO["chunk_overlap\nnumber?"]
+
+    CT --> CN["ContainerName\nobject"]
+    CN --> D["description\nstring"]
+    CN --> IP["indexed_paths\nstring[]"]
+```
+
+---
+
+## Schema validation
+
+Add this field for autocomplete and inline validation in VS Code and other JSON-aware editors:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/illegal-instruction-co/recall-lite/main/config.schema.json"
+  "$schema": "https://raw.githubusercontent.com/FeelTheFonk/recall-lite/main/config.schema.json"
 }
 ```
 
-vscode will pick it up automatically. schema lives at [`config.schema.json`](config.schema.json) in the repo.
+The schema lives at [`config.schema.json`](config.schema.json) in the repo root.
 
-## embedding model
+---
+
+## Embedding model
 
 ```json
 {
@@ -24,11 +54,20 @@ vscode will pick it up automatically. schema lives at [`config.schema.json`](con
 }
 ```
 
-options: `AllMiniLML6V2`, `MultilingualE5Small`, `MultilingualE5Base`
+| Value | Dimensions | Disk | Notes |
+|---|---|---|---|
+| `MultilingualE5Base` | 768 | ~1.1 GB | Default. Best quality. Multilingual. |
+| `MultilingualE5Small` | 384 | ~470 MB | Faster indexing. Slightly lower recall. |
+| `AllMiniLML6V2` | 384 | ~90 MB | English only. Fastest. Lowest recall. |
 
-change this and restart. it'll download the new model, build a fresh index. don't mix models with existing indexes -- dimensions won't match and search will silently return garbage.
+> [!WARNING]
+> Changing the model invalidates the existing index. The app will detect the dimension mismatch on the next index operation and rebuild the table. Switch models only when you are prepared to re-index.
 
-## hotkey
+Models download automatically from HuggingFace on first use. If your network requires a proxy, set `HTTPS_PROXY` before launching.
+
+---
+
+## Hotkey
 
 ```json
 {
@@ -36,17 +75,21 @@ change this and restart. it'll download the new model, build a fresh index. don'
 }
 ```
 
-default is `Alt+Space`. if that's already mapped to something else on your system, change it here. format: modifiers joined with `+`, then the key.
+Default: `Alt+Space`. Change this if that combination is already claimed on your system.
 
-modifiers: `Alt`, `Ctrl`, `Shift`, `Super` (or `Win`/`Meta`/`Cmd`)
+**Format:** modifiers joined with `+`, then the key. Order does not matter.
 
-keys: letters (`A`-`Z`), digits (`0`-`9`), `F1`-`F12`, `Space`, `Enter`, `Tab`, `Escape`, arrows (`Up`/`Down`/`Left`/`Right`), and most punctuation.
+**Modifiers:** `Alt`, `Ctrl` / `Control`, `Shift`, `Super` / `Win` / `Meta` / `Cmd`
 
-examples: `Ctrl+Shift+K`, `Alt+F1`, `Super+Space`, `Ctrl+Alt+R`
+**Keys:** `A`-`Z`, `0`-`9`, `F1`-`F12`, `Space`, `Enter`, `Tab`, `Escape`, `Up`, `Down`, `Left`, `Right`, `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete`, and most punctuation (`-`, `=`, `[`, `]`, `\`, `;`, `'`, `,`, `.`, `/`, `` ` ``).
 
-restart the app after changing.
+**Examples:** `Ctrl+Shift+K`, `Alt+F1`, `Super+Space`, `Ctrl+Alt+R`
 
-## always on top
+Restart required after changing.
+
+---
+
+## Always on top
 
 ```json
 {
@@ -54,9 +97,11 @@ restart the app after changing.
 }
 ```
 
-default is `true`. set to `false` if you want the window to behave like a normal app (goes behind other windows when you click away). restart required.
+Default: `true`. Set to `false` if you want the window to go behind other windows when you click away. Restart required.
 
-## launch at startup
+---
+
+## Launch at startup
 
 ```json
 {
@@ -64,8 +109,29 @@ default is `true`. set to `false` if you want the window to behave like a normal
 }
 ```
 
-default is `false`. set to `true` and the app will start automatically when you log in. uses the system's native startup mechanism (registry on windows, launch agent on mac, autostart on linux). restart required to apply changes.
-## indexing
+Default: `false`. Set to `true` to register in Windows startup (registry). Restart required to apply.
+
+---
+
+## Locale
+
+```json
+{
+  "locale": "auto"
+}
+```
+
+| Value | Behaviour |
+|---|---|
+| `"auto"` | Detect from Windows system locale |
+| `"en"` | English |
+| `"tr"` | Turkish |
+
+You can also cycle the locale from the sidebar without editing the file.
+
+---
+
+## Indexing
 
 ```json
 {
@@ -78,31 +144,28 @@ default is `false`. set to `true` and the app will start automatically when you 
 }
 ```
 
-all fields optional. skip what you don't need.
+All fields are optional.
 
-- **extra_extensions** -- got a weird file format? throw its extension here. it'll get indexed with default chunking. no semantic splitting (that's hardcoded per-language), but overlap chunking works fine for any text file
-- **excluded_extensions** -- some extension getting indexed that you don't want? kill it here. overrides the built-in list
-- **chunk_size** -- max bytes per chunk. default varies by filetype (1200 for code, 800 for docs, 600 for config files). set this to override globally
-- **chunk_overlap** -- bytes of overlap between chunks. prevents losing context at boundaries. default is 100-200 depending on filetype
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `extra_extensions` | `string[]` | `[]` | Index additional file types with overlap chunking |
+| `excluded_extensions` | `string[]` | `[]` | Block built-in types from being indexed |
+| `chunk_size` | `number` | varies by type | Max bytes per chunk (global override) |
+| `chunk_overlap` | `number` | varies by type | Overlap bytes between consecutive chunks |
 
-don't go crazy with chunk_size. the embedding model has a token limit (~512 tokens). bigger chunks = more truncation = worse search quality. the defaults are already tuned.
+> [!CAUTION]
+> The embedding model has a ~512 token limit. Chunks larger than ~1500 bytes get truncated. The defaults are already tuned per file type -- only override if you have a specific reason.
 
-## .rcignore
+---
 
-drop a `.rcignore` file in any indexed folder. same syntax as `.gitignore`. the indexer respects both.
-
-use this for stuff `.gitignore` doesn't cover -- large datasets, personal notes, build artifacts from non-git projects, whatever.
-
-the app ships with a default `.rcignore` that excludes the obvious stuff (node_modules, dist, binaries, videos, archives, db files).
-
-## containers
+## Containers
 
 ```json
 {
   "containers": {
     "Work": {
-      "description": "work stuff",
-      "indexed_paths": ["C:\\Projects"]
+      "description": "work projects and notes",
+      "indexed_paths": ["C:\\Projects", "C:\\Users\\You\\Documents\\Work"]
     },
     "Personal": {
       "description": "",
@@ -113,38 +176,56 @@ the app ships with a default `.rcignore` that excludes the obvious stuff (node_m
 }
 ```
 
-each container = isolated index. separate lancedb table. delete a container --> its data is gone, no orphaned vectors floating around.
+Each container maps to an isolated LanceDB table (`c_<sanitized_name>`). Containers are managed through the GUI sidebar. You can also edit this block by hand.
 
-managed through the GUI, but you can edit this by hand if you want.
+Deleting a container via the GUI drops the table immediately. No orphaned data.
 
-## supported file types
+---
 
-120+ extensions out of the box. the big ones:
+## Supported file types
 
-**code** -- rs, py, js, ts, tsx, jsx, go, java, kt, scala, swift, dart, php, c, cpp, cs, rb, lua, zig, nim, ex, erl, hs, ml, elm, sol, and like 50 more
+<details>
+<summary>120+ extensions out of the box</summary>
 
-**docs** -- md, txt, rst, adoc, tex, pdf
+**Code**
+`rs`, `py`, `js`, `ts`, `tsx`, `jsx`, `go`, `java`, `kt`, `kts`, `scala`, `swift`, `dart`, `php`, `c`, `h`, `cpp`, `cc`, `cxx`, `hpp`, `cs`, `vb`, `rb`, `lua`, `zig`, `nim`, `ex`, `exs`, `erl`, `hrl`, `hs`, `lhs`, `ml`, `mli`, `elm`, `clj`, `cljs`, `sol`, `cairo`, `r`, `jl`, `f90`, `f95`, `f03`, `m`, `mm`
 
-**config** -- toml, yaml, json, ini, cfg, env, tf, hcl, nix, proto, graphql
+**Documents**
+`md`, `txt`, `rst`, `adoc`, `tex`, `pdf`
 
-**data** -- csv, tsv, sql, log
+**Config**
+`toml`, `yaml`, `yml`, `json`, `jsonc`, `ini`, `cfg`, `conf`, `env`, `tf`, `tfvars`, `hcl`, `nix`, `proto`, `graphql`, `gql`, `prisma`, `bazel`, `bzl`, `BUILD`
 
-**web** -- html, css, scss, less, sass, vue, svelte, astro, pug, ejs, hbs
+**Data**
+`csv`, `tsv`, `sql`, `log`
 
-**devops** -- sh, bash, zsh, fish, ps1, bat, cmd, dockerfile, makefile
+**Web**
+`html`, `htm`, `xml`, `svg`, `css`, `scss`, `less`, `sass`, `vue`, `svelte`, `astro`, `pug`, `ejs`, `hbs`, `njk`, `liquid`, `mdx`
 
-**images** -- png, jpg, gif, bmp, tiff, webp (via OCR)
+**DevOps / Shell**
+`sh`, `bash`, `zsh`, `fish`, `ps1`, `psm1`, `bat`, `cmd`, `Dockerfile`, `Makefile`, `justfile`, `mk`
 
-don't see your extension? add it to `extra_extensions` in config. or open a PR and we'll add semantic chunking patterns for it too.
+**Images (OCR)**
+`png`, `jpg`, `jpeg`, `gif`, `bmp`, `tiff`, `tif`, `webp`
 
-## logs
+Not seeing your extension? Add it to `extra_extensions`. For semantic chunking patterns (split at function boundaries etc.), open an issue.
 
-`%AppData%\com.recall-lite.app\recall.log`
+</details>
 
-model loading, indexing errors, watcher events. check here when something feels broken.
+---
 
-## models location
+## .rcignore
+
+Drop a `.rcignore` file in any indexed folder. Same syntax as `.gitignore`. The indexer respects both `.gitignore` and `.rcignore`.
+
+Use this for content that `.gitignore` does not cover: large datasets, personal notes, build artifacts from non-git projects.
+
+Standard exclusions applied automatically: `node_modules`, `dist`, `target`, `.git`, binaries, archives, videos, database files, lock files.
+
+---
+
+## Models location
 
 `%AppData%\com.recall-lite.app\models\`
 
-~2GB total. downloaded automatically on first run via huggingface hub. if your network is flaky, set `HTTPS_PROXY` env var. the models are ONNX format, managed by fastembed.
+~2 GB total. Downloaded from HuggingFace on first run. ONNX format, managed by fastembed. Safe to delete if you want to force a re-download. The app will re-fetch on next launch.

@@ -1,83 +1,273 @@
-# Recall Lite (local-mind)
+# Recall Lite
 
-Windows search sucks. Copilot is creepy. I needed something that finds my sh*t without sending my screen to the cloud.
+[![Build](https://github.com/FeelTheFonk/recall-lite/actions/workflows/release.yml/badge.svg)](https://github.com/FeelTheFonk/recall-lite/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/FeelTheFonk/recall-lite)](https://github.com/FeelTheFonk/recall-lite/releases/latest)
+[![License](https://img.shields.io/github/license/FeelTheFonk/recall-lite)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-Windows%2011-0078D4?logo=windows11&logoColor=white)](https://github.com/FeelTheFonk/recall-lite)
+[![Rust](https://img.shields.io/badge/Rust-2021-CE422B?logo=rust&logoColor=white)](https://www.rust-lang.org)
 
-So I built this.
+Local semantic file search for Windows 11. Spotlight-style overlay, hybrid vector + full-text search, offline AI embeddings, MCP server for AI agents. Nothing leaves your machine.
 
-![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
+> Forked from [illegal-instruction-co/recall-lite](https://github.com/illegal-instruction-co/recall-lite).
+> v2.0 rewrites the entire UI in native Rust (eframe/egui), removing the Tauri + React stack.
 
-![Search](https://github.com/user-attachments/assets/98407df3-1984-4f3d-9cd5-21cbfdc4cb85)
+---
 
-Spotlight can't find what you mean. This can.
+## Architecture
 
-## what it does
-local semantic search. you type meaning, it finds files. runs in your system tray, never phones home.
+```mermaid
+graph TD
+    subgraph OS["Operating System"]
+        HK["Alt+Space\nglobal hotkey"]
+        TR["System Tray"]
+        FS["File System\n(OS events)"]
+    end
 
-- indexes 50+ file types (pdf, images, code, configs, markdown, csv, logs, dotfiles, whatever)
-- OCR on images via windows built-in engine. zero install
-- reads EXIF from photos --> camera, lens, aperture, ISO, focal length, gps coordinates
-- **reverse geocodes GPS to actual city names**. so yeah you can search "photos from istanbul" and it works
-- dates from EXIF get expanded to human words --> day names, months, time of day, season, in both english and turkish. search "summer morning" and find a photo from july
-- hybrid search: vector similarity + full-text + JINA cross-encoder reranker
-- query expansion strips stop words (EN + TR), generates keyword variants
-- smart chunking --> splits rust at `fn`/`struct`, python at `def`/`class`, markdown at headers, yaml at top-level keys. chunk sizes tuned per format
-- semantic containers --> isolate work/personal/research. each gets its own DB table. delete one, zero remnants
-- parallel file extraction via rayon --> all your CPU cores working at once
-- i18n support --> JSON locale files, auto-detects system language. drop a json file to add your language
+    subgraph gui["recall-lite.exe  —  GUI process"]
+        UI["eframe/egui\nUI layer"]
+        RT["tokio\nasync runtime"]
+        WA["notify\nfile watcher"]
+    end
 
-## stack
-- rust (tauri 2) + react/ts (vite)
-- [lancedb](https://lancedb.com/) --> embedded vector db, no docker, no server
-- `Multilingual-E5-Base` for embeddings (768-dim, ~1.1GB ONNX)
-- `JINA Reranker v2` for cross-encoding (multilingual)
-- `reverse_geocoder` crate for offline GPS lookups
-- `rayon` for parallel file processing
-- windows mica/acrylic backdrop. looks native
+    subgraph storage["Local storage  —  %AppData%\\com.recall-lite.app"]
+        DB[("LanceDB\nvectors + BM25")]
+        MDL["ONNX models\n~2 GB"]
+        CFG["config.json"]
+    end
 
-## run it
-```bash
-npm install
-npm run tauri dev        # downloads models on first run (~2GB total)
-npm run tauri build      # release. use this for real speed
+    subgraph mcp["recall-mcp.exe  —  MCP process"]
+        MCPS["rmcp server\nstdio transport"]
+    end
+
+    subgraph clients["AI clients"]
+        CUR["Cursor"]
+        CLD["Claude Desktop"]
+        VSC["VS Code / Copilot"]
+    end
+
+    HK -->|show / hide| UI
+    TR -->|show / quit| UI
+    UI -->|index folder| DB
+    UI -->|hybrid search| DB
+    UI -->|embed| MDL
+    RT -->|progress events| UI
+    FS -->|file events| WA
+    WA -->|upsert / delete| DB
+
+    DB -. shared .-> MCPS
+    MDL -. shared .-> MCPS
+    CFG -. shared .-> MCPS
+
+    CUR -->|stdio| MCPS
+    CLD -->|stdio| MCPS
+    VSC -->|stdio| MCPS
 ```
 
-## shortcuts
-- `Alt + Space` --> toggle window (global)
-- `Ctrl + O` --> pick folder to index
-- `up/down` --> navigate, `Enter` --> open file
-- `Esc` --> clear
-- `Shift + Delete` --> nuke current index
+---
 
-## config
-`%AppData%\com.recall-lite.app\config.json` -- see [CONFIG.md](CONFIG.md) for the full breakdown (indexing settings, extra extensions, chunk tuning, .rcignore, model paths).
+## What it does
 
-logs: `%AppData%\com.recall-lite.app\recall.log`
+- **Hybrid search** -- vector similarity (Multilingual-E5-Base, 768-dim) + BM25 full-text + JINA cross-encoder reranker. Finds what you mean, not just what you typed.
+- **Spotlight overlay** -- global hotkey, no taskbar entry, hides on focus loss. Stays out of the way.
+- **Windows 11 Mica** -- native blur / transparency through `window-vibrancy`. Looks right at home.
+- **OCR on images** -- Windows built-in OCR engine. No external dependency. PNG, JPG, TIFF, BMP, WEBP.
+- **EXIF metadata** -- camera, lens, aperture, ISO, focal length. GPS reverse-geocoded to city names offline. Dates expanded to day names, months, time of day, season in both English and Turkish. Search "photos from Istanbul" or "summer morning" and it works.
+- **Semantic containers** -- isolate work / personal / research. Each container is a separate LanceDB table. Delete one, no orphaned vectors.
+- **File watcher** -- OS-level events via `notify`, 500 ms debounce. Auto re-indexes changed files, removes deleted ones. Zero CPU at idle.
+- **MCP server** -- `recall-mcp.exe` exposes your indexed files to AI clients over stdio. 7 tools, no network, no API keys.
+- **50+ file types** -- code, docs, config, data, web, devops, images. Full list in [CONFIG.md](CONFIG.md).
+- **Smart chunking** -- language-aware: Rust at `fn`/`struct`, Python at `def`/`class`, Markdown at headers, YAML at top-level keys.
+- **Incremental indexing** -- mtime check per file. Only re-embeds what changed.
+- **i18n** -- English and Turkish built-in. Auto-detects system language. Toggle in one click from the sidebar.
 
-## misc
-- incremental indexing (mtime check, skips unchanged)
-- streams embeddings in 256-chunk batches, constant memory
-- search works during indexing --> model lock per batch, not per session
-- reranker runs on blocking threadpool so it doesnt choke async
-- auto-migrates old configs, retries model load 3x, cleans up legacy cache
-- release builds only. debug is 10x slower thats normal
+---
 
-## MCP server -- built for AI agents
+## Search pipeline
 
-one exe. plug it into cursor, claude desktop, copilot, windsurf, whatever. your AI gets full access to your local codebase without cloud APIs.
+```mermaid
+flowchart LR
+    Q["query"] --> E["E5-Base\nembed"]
+    Q --> X["expand_query\nstop words stripped\nkeyword variants"]
 
-7 tools, zero round-trips:
-- **`recall_search`** -- semantic + keyword hybrid search with filtering (`top_k`, `file_extensions`, `path_prefix`, `context_bytes`)
-- **`recall_read_file`** -- agent reads file content directly (with line ranges). find → read in one session
-- **`recall_list_files`** -- browse indexed file tree with filters
-- **`recall_index_status`** -- check if index is fresh before searching
-- **`recall_diff`** -- what changed recently? instant context at conversation start
-- **`recall_related`** -- find semantically similar files via vector proximity
-- **`recall_list_containers`** -- list available search scopes
+    E --> VS["vector search\ntop 50"]
+    X --> F1["BM25 FTS\nvariant 1  top 30"]
+    X --> F2["BM25 FTS\nvariant 2  top 30"]
 
-setup & config → [MCP.md](MCP.md)
+    F1 --> DD["deduplicate"]
+    F2 --> DD
 
-## roadmap
-see [ROADMAP.md](ROADMAP.md).
+    VS --> M["RRF merge\ntop 15"]
+    DD --> M
 
-## license
-MIT. do whatever.
+    M --> R["JINA Reranker v2\ncross-encoder\nspawn_blocking"]
+    R --> OUT["results\npath  snippet  score%"]
+```
+
+---
+
+## Indexing pipeline
+
+```mermaid
+flowchart TD
+    FP["Ctrl+O\nfolder pick"] --> WB["WalkBuilder\ngitignore + .rcignore"]
+    WB --> FT{"file type?"}
+    FT -->|"text  code  pdf  config"| MT["mtime check\nskip if unchanged"]
+    FT -->|"image"| OCR["Windows OCR\nEXIF  GPS geocode"]
+    MT --> CH["semantic chunk\nper-language patterns"]
+    OCR --> CH
+    CH --> EB["embed batch\n256 chunks  E5-Base\nrayon parallel extraction"]
+    EB --> UP["LanceDB upsert\ndelete stale  insert new"]
+    UP --> IX{"doc count\n>= 256?"}
+    IX -->|yes| ANN["ANN index\nIVF_PQ on vectors"]
+    IX -->|yes| FTX["FTS index\ntantivy BM25"]
+    ANN --> DONE["done"]
+    FTX --> DONE
+    IX -->|no| DONE
+```
+
+---
+
+## Window behavior
+
+```mermaid
+stateDiagram-v2
+    [*] --> Hidden : launch  system tray only
+
+    Hidden --> Visible : Alt+Space  /  tray click
+    Visible --> Hidden : Alt+Space  /  Escape on empty query  /  focus loss
+
+    Visible --> Visible : type  navigate  open file
+    Visible --> Modal : create container  /  confirm delete  /  confirm clear
+
+    Modal --> Visible : confirm  /  cancel  /  Escape
+
+    Hidden --> [*] : quit from tray
+```
+
+> [!NOTE]
+> The window hides when it loses OS focus (300 ms debounce after show). After a native folder-picker dialog, a 500 ms suppression window prevents the window from hiding before focus returns.
+
+---
+
+## Installation
+
+No npm. No Node. No Tauri CLI. Pure Rust.
+
+### Releases (Windows x64)
+
+Download `recall-lite.exe` and `recall-mcp.exe` from [releases](https://github.com/FeelTheFonk/recall-lite/releases).
+
+On first launch, ~2 GB of ONNX model weights download automatically into `%AppData%\com.recall-lite.app\models`. This is a one-time operation.
+
+### Build from source
+
+```bash
+# Prerequisites: Rust stable (MSVC toolchain) + protoc
+winget install Google.Protobuf
+
+git clone https://github.com/FeelTheFonk/recall-lite
+cd recall-lite/src-tauri
+
+cargo build --release                       # GUI binary
+cargo build --bin recall-mcp --release      # MCP server binary
+
+# Output:
+#   target/release/recall-lite.exe
+#   target/release/recall-mcp.exe
+```
+
+> [!IMPORTANT]
+> `protoc` is required at **build time** only (LanceDB dependency). Not needed at runtime.
+
+> [!TIP]
+> Release builds use `opt-level = 3`, LTO, and `mimalloc`. Debug builds are 10x slower -- always benchmark with `--release`.
+
+---
+
+## Quick start
+
+1. Launch `recall-lite.exe`. It hides to the system tray immediately.
+2. Press `Alt+Space` to open the overlay.
+3. Press `Ctrl+O` to pick a folder to index. Wait for completion.
+4. Type to search. Results appear after 300 ms idle.
+5. `Enter` to open the selected file. `Escape` to hide.
+
+The first launch is slow (~5-30 s) because the embedding model loads ~1.1 GB of weights. Subsequent launches are instant.
+
+---
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `Alt+Space` | Toggle overlay (global, works from any app) |
+| `Ctrl+O` | Pick a folder to index |
+| `Up` / `Down` | Navigate results |
+| `Enter` | Open selected file |
+| `Escape` | Clear query (if non-empty) -- hide window (if empty) |
+
+The global hotkey is configurable. See [CONFIG.md](CONFIG.md).
+
+---
+
+## MCP server
+
+`recall-mcp.exe` gives any MCP-compatible AI client direct access to your local index over stdio. No network. No API key. No extension to install.
+
+7 tools: `recall_search`, `recall_read_file`, `recall_list_files`, `recall_index_status`, `recall_diff`, `recall_related`, `recall_list_containers`.
+
+Full setup for Cursor, Claude Desktop, VS Code: [MCP.md](MCP.md)
+
+---
+
+## Configuration
+
+`%AppData%\com.recall-lite.app\config.json` -- hand-editable JSON. Auto-migrated on parse failure.
+
+Covers: embedding model, hotkey, launch at startup, always-on-top, indexing settings (extra / excluded extensions, chunk size, chunk overlap), containers, .rcignore.
+
+Full reference: [CONFIG.md](CONFIG.md)
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| UI | [eframe 0.33](https://github.com/emilk/egui) + egui (wgpu backend) |
+| Window effects | [window-vibrancy 0.7](https://github.com/tauri-apps/window-vibrancy) (Mica) |
+| Global hotkey | [global-hotkey 0.7](https://github.com/tauri-apps/global-hotkey) |
+| System tray | [tray-icon 0.21](https://github.com/tauri-apps/tray-icon) |
+| Vector DB | [LanceDB 0.26](https://lancedb.com/) -- in-process, no server |
+| Embeddings | [fastembed 5](https://github.com/Anush008/fastembed-rs) -- Multilingual-E5-Base (768-dim) |
+| Reranker | fastembed -- JINA Reranker v2 Base Multilingual |
+| Async runtime | tokio multi-thread |
+| Parallel extraction | rayon |
+| File watching | notify-debouncer-full |
+| File traversal | ignore crate (ripgrep engine) |
+| OCR | Windows.Media.Ocr (WinRT) -- zero install |
+| GPS geocoding | reverse_geocoder -- offline kd-tree |
+| MCP protocol | [rmcp 0.15](https://github.com/modelcontextprotocol/rust-sdk) |
+| Allocator | mimalloc |
+
+---
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md).
+
+---
+
+## Credits
+
+Forked from [illegal-instruction-co/recall-lite](https://github.com/illegal-instruction-co/recall-lite) by [machinetherapist](https://github.com/illegal-instruction-co).
+
+The core search engine -- LanceDB integration, fastembed pipeline, hybrid search, MCP server, file watcher, semantic chunking, EXIF/OCR pipeline, query expansion, incremental indexing -- is their work.
+
+v2.0 contribution (this fork): full rewrite of the UI layer from Tauri + React to native Rust (eframe/egui), Spotlight window behavior with hide-on-unfocus, Windows 11 Mica transparency via wgpu, runtime i18n (EN + TR), multiple correctness fixes (GPS denom guard, ANN threshold, modal placeholder substitution, conditional focus, delete-without-dim).
+
+---
+
+## License
+
+MIT.

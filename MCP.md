@@ -1,103 +1,63 @@
-# MCP server
+# MCP Server
 
-you know how every AI editor wants you to install some extension or connect to some API? forget that. recall-lite has an MCP server built in. one exe, stdin/stdout, done.
+`recall-mcp.exe` exposes your local index to any MCP-compatible AI client over stdio. No network. No API key. No extension to install in the client.
 
-plug it into cursor, claude desktop, copilot, whatever. your AI can now search your local files without you copy-pasting paths like an animal.
+Index your files in the main app once. Then every AI client you connect gets semantic search, file reading, structure browsing, and diff detection on your local codebase.
 
-## tools
+---
 
-### `recall_search`
+## How it works
 
-full pipeline. vector search → keyword search → hybrid merge → JINA reranker. same quality as the GUI. returns paths, snippets, scores.
+```mermaid
+sequenceDiagram
+    participant C as AI client
+    participant M as recall-mcp.exe
+    participant DB as LanceDB
+    participant E as E5-Base + JINA
 
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `query` | string | required | what you're looking for |
-| `container` | string? | active | which container to search |
-| `top_k` | number? | 10 | results to return (max 50) |
-| `file_extensions` | string[]? | all | filter by extension, e.g. `["rs", "ts"]` |
-| `path_prefix` | string? | none | filter by path prefix, e.g. `"src/indexer"` |
-| `context_bytes` | number? | 1500 | snippet size in bytes (max 10000) |
+    Note over M: startup: load models (~5-30s first run)
 
-### `recall_read_file`
+    C->>M: recall_search(query, top_k)
+    M->>E: embed(query)
+    E-->>M: query_vector [768-dim]
+    M->>DB: vector_search(top 50)
+    M->>DB: BM25_search(variants, top 30)
+    DB-->>M: candidates
+    M->>E: rerank(query, candidates)
+    E-->>M: ranked results
+    M-->>C: paths · snippets · scores
 
-agent finds a file via search → reads it without leaving MCP. no more round-trips.
+    C->>M: recall_read_file(path, start_line, end_line)
+    M->>M: check path in indexed_paths
+    M-->>C: file content
+```
 
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `path` | string | required | absolute path to the file |
-| `start_line` | number? | 1 | start line (1-indexed, inclusive) |
-| `end_line` | number? | EOF | end line (1-indexed, inclusive) |
+The MCP server and the GUI share the same LanceDB database and model cache. You do not need to re-index for the MCP server to see results.
 
-security: only reads files inside indexed container paths. can't escape to random system files.
+---
 
-### `recall_list_files`
+## Get the binary
 
-get the project structure instantly. returns deduplicated file list with sizes.
+Download `recall-mcp.exe` from [releases](https://github.com/FeelTheFonk/recall-lite/releases).
 
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `container` | string? | active | which container |
-| `path_prefix` | string? | none | filter by path prefix |
-| `extensions` | string[]? | all | filter by extension |
+Or build it yourself:
 
-### `recall_index_status`
-
-agent checks if the index is fresh or empty before wasting time searching.
-
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `container` | string? | active | which container |
-
-returns: `total_files`, `total_chunks`, `has_index`, `indexed_paths`, container metadata.
-
-### `recall_diff`
-
-what changed recently? call this at the start of every conversation to get instant context.
-
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `since` | string | required | time window: `"30m"`, `"2h"`, `"1d"`, `"7d"` |
-| `container` | string? | active | which container |
-| `show_diff` | bool? | true | include file preview (first 50 lines) |
-
-returns: changed file paths, timestamps, previews, and detects deleted files.
-
-### `recall_related`
-
-given a file, finds other files with similar meaning. uses vector proximity in embedding space -- not grep, not imports, actual semantic similarity.
-
-| param | type | default | description |
-|-------|------|---------|-------------|
-| `path` | string | required | absolute path to the file |
-| `container` | string? | active | which container |
-| `top_k` | number? | 10 | related files to return (max 30) |
-
-returns: related file paths with similarity scores and snippets.
-
-### `recall_list_containers`
-
-dumps your containers. names, paths, descriptions, which one's active. no params.
-
-## get the binary
-
-grab `recall-mcp.exe` from [releases](https://github.com/illegal-instruction-co/recall-lite/releases).
-
-or build it yourself if you're into that:
 ```bash
+cd recall-lite/src-tauri
 cargo build --bin recall-mcp --release
-# sits in src-tauri/target/release/
+# Output: target/release/recall-mcp.exe
 ```
 
-## before you start
+> [!IMPORTANT]
+> Index at least one folder in the main GUI app before using the MCP server. The server does not index anything -- it only searches. No index = no results.
 
-index some folders in the main app first. the MCP server doesn't index anything, it just searches. no index = no results = you'll think it's broken.
+---
 
-## hook it up
+## Setup
 
-### cursor
+### Cursor
 
-settings → MCP → add server. or just edit `~/.cursor/mcp.json`:
+Edit `~/.cursor/mcp.json` (or Settings > MCP > Add server):
 
 ```json
 {
@@ -109,11 +69,9 @@ settings → MCP → add server. or just edit `~/.cursor/mcp.json`:
 }
 ```
 
-restart. done.
+### Claude Desktop
 
-### claude desktop
-
-edit `%AppData%\Claude\claude_desktop_config.json`:
+Edit `%AppData%\Claude\claude_desktop_config.json`:
 
 ```json
 {
@@ -125,11 +83,9 @@ edit `%AppData%\Claude\claude_desktop_config.json`:
 }
 ```
 
-restart. done.
+### VS Code / GitHub Copilot
 
-### VS code copilot
-
-`.vscode/mcp.json` or user settings:
+`.vscode/mcp.json` in your workspace, or user settings:
 
 ```json
 {
@@ -143,36 +99,127 @@ restart. done.
 }
 ```
 
-### anything else
+### Any other MCP client
 
-stdio transport. point at the exe. no args, no env vars, no ports, no docker. just the path.
+Stdio transport. Absolute path to the exe. No arguments. No environment variables. No ports.
 
-## what happens under the hood
+---
 
-on launch it:
-1. opens the same LanceDB the main app uses (`%AppData%\com.recall-lite.app\lancedb`)
-2. loads embedding model + reranker from local cache (`%AppData%\com.recall-lite.app\models`)
-3. reads your config (`%AppData%\com.recall-lite.app\config.json`)
-4. sits on stdin waiting for queries
+## Tools
 
-first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weights + ~1GB reranker. after that it's instant.
+### `recall_search`
 
-## stuff that might confuse you
+Full hybrid pipeline: vector search + BM25 FTS + JINA reranker. Same quality as the GUI.
 
-**no results** -- you didn't index anything. open the main app, index a folder, try again
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `query` | `string` | required | Natural language or keyword query |
+| `container` | `string?` | active | Which container to search |
+| `top_k` | `number?` | 10 | Results to return (max 50) |
+| `file_extensions` | `string[]?` | all | Filter by extension, e.g. `["rs", "ts"]` |
+| `path_prefix` | `string?` | none | Filter by path prefix, e.g. `"src/indexer"` |
+| `context_bytes` | `number?` | 1500 | Snippet size in bytes (max 10000) |
 
-**slow first query** -- model loading. chill. next ones are fast
+Returns: array of `{ path, snippet, score }` ordered by relevance.
 
-**server not showing up** -- check the exe path. absolute path. double backslashes on windows. yes it's annoying
+---
 
-**searching wrong stuff** -- defaults to active container. pass `container: "Whatever"` to pick a different one
+### `recall_read_file`
 
-**access denied on read_file** -- the file isn't inside any indexed container path. index the parent folder first
+Read a file without leaving MCP. Security: only reads files inside indexed container paths.
 
-**recall_diff returns nothing** -- if the main app was closed while files were edited, mtime in the index is stale. open the app and let the file watcher catch up
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `path` | `string` | required | Absolute path to the file |
+| `start_line` | `number?` | 1 | Start line, 1-indexed, inclusive |
+| `end_line` | `number?` | EOF | End line, 1-indexed, inclusive |
 
-**recall_related says file not found** -- the file hasn't been indexed yet. index first, search second
+Typical pattern: `recall_search` to find a file, then `recall_read_file` to read it. One conversation, no round-trips.
 
-## privacy
+---
 
-everything local. reads local DB, uses local models, talks over stdio not network. your files stay on your machine. that's the whole point.
+### `recall_list_files`
+
+Browse the indexed file tree. Useful for project structure discovery at the start of a session.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `container` | `string?` | active | Which container |
+| `path_prefix` | `string?` | none | Limit to a subdirectory |
+| `extensions` | `string[]?` | all | Filter by extension |
+
+Returns: deduplicated file list with sizes.
+
+---
+
+### `recall_index_status`
+
+Check index health before searching. Agents should call this at session start.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `container` | `string?` | active | Which container |
+
+Returns: `total_files`, `total_chunks`, `has_index`, `indexed_paths`, container description.
+
+---
+
+### `recall_diff`
+
+What changed recently? Call this at the start of a session to get instant context on recent work.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `since` | `string` | required | Time window: `"30m"`, `"2h"`, `"1d"`, `"7d"` |
+| `container` | `string?` | active | Which container |
+| `show_diff` | `bool?` | true | Include first 50 lines of each changed file |
+
+Returns: changed file paths, timestamps, previews, deleted file detection.
+
+---
+
+### `recall_related`
+
+Given a file, find semantically similar files via vector proximity. Not grep, not imports -- actual meaning similarity in embedding space.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `path` | `string` | required | Absolute path to the source file |
+| `container` | `string?` | active | Which container |
+| `top_k` | `number?` | 10 | Related files to return (max 30) |
+
+Returns: related file paths with similarity scores and snippets.
+
+---
+
+### `recall_list_containers`
+
+List all containers with their names, descriptions, indexed paths, and which one is active. No parameters.
+
+---
+
+## Startup time
+
+First launch: 5-30 seconds. The server loads ~1.1 GB of E5-Base weights and ~1 GB of JINA Reranker weights. After that, queries are fast (< 1 s for most searches).
+
+The weights are shared with the GUI process via the same model cache directory. If the GUI has already loaded them, the MCP server benefits from OS file cache.
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| No results | Nothing indexed | Open the main app, index a folder, retry |
+| Slow first query | Model loading | Wait ~30 s, subsequent queries are fast |
+| Server not appearing in client | Wrong exe path | Use absolute path with double backslashes on Windows |
+| Searching wrong container | Default is the active container | Pass `container: "Name"` explicitly |
+| `recall_read_file` access denied | File not in any indexed path | Index the parent folder first |
+| `recall_diff` returns nothing | Index is stale (app was closed during edits) | Open the main app, let the file watcher catch up |
+| `recall_related` file not found | File not indexed | Index first, then search |
+
+---
+
+## Privacy
+
+Everything is local. The MCP server reads the same local LanceDB and local ONNX models as the GUI. It communicates with AI clients over stdio, not network. Your file contents never leave your machine.

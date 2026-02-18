@@ -1,19 +1,29 @@
-# roadmap
+# Roadmap
 
-- ~~**MCP server**~~ done -- `recall-mcp` binary exposes search as tools over stdio. any MCP client (cursor, claude desktop, copilot) can use it out of the box
-- ~~**file watcher**~~ done -- `notify` crate, OS-level events (zero CPU idle), 500ms debounce. auto re-embeds changed files, removes deleted ones. `reindex_all` now does delta instead of nuking the table like a maniac
-- **agentic search** -- local LLM that can grep --> read --> reason --> answer in a loop. notebooklm but private
-- ~~**vibe coding / agent support**~~ done -- MCP server is now agent-optimized:
-  - ~~bigger context per result~~ done -- `context_bytes` param, up to 10KB per snippet
-  - ~~file type / path filtering~~ done -- `file_extensions` and `path_prefix` params on search
+## Done
+
+- ~~**Native Rust UI**~~ done -- eframe/egui replaces Tauri + React entirely. Pure Rust, no npm, no Node, no Vite. Windows 11 Mica via wgpu. Spotlight window behavior with hide-on-unfocus.
+- ~~**MCP server**~~ done -- `recall-mcp.exe` exposes search as tools over stdio. Any MCP client (Cursor, Claude Desktop, VS Code Copilot) works out of the box.
+- ~~**File watcher**~~ done -- `notify` crate, OS-level events, zero CPU at idle, 500 ms debounce. Auto re-indexes changed files, removes deleted ones.
+- ~~**Vibe coding / agent support**~~ done -- MCP server is agent-optimized:
+  - ~~bigger context per result~~ done -- `context_bytes` param, up to 10 KB per snippet
+  - ~~file type / path filtering~~ done -- `file_extensions` and `path_prefix` on search
   - ~~configurable result count~~ done -- `top_k` param, 1-50 results
   - ~~agents can read files without leaving MCP~~ done -- `recall_read_file` with line ranges
   - ~~agents can browse project structure~~ done -- `recall_list_files` with filters
   - ~~agents can check index health~~ done -- `recall_index_status`
-  - tree-sitter based chunking. split on function/class boundaries instead of byte counts
-  - ~~agent-triggered indexing~~ **intentionally excluded** -- indexing takes minutes and agents shouldn't silently index folders. users pick what to index from the GUI. that's a security boundary, not a missing feature
-  - the goal: make recall-lite the local private alternative to greptile/sourcegraph for AI-assisted coding
-- **linux / mac** -- need cross-platform alternatives for OCR and mica backdrop
-- **more file types** -- always
 
-want something? open an issue.
+## Planned
+
+- **tree-sitter chunking** -- split on actual function / class boundaries instead of byte counts. Better chunks = better search quality, especially for large files.
+- **agentic search** -- local LLM that can search → read → reason → answer in a loop. NotebookLM, but private.
+- **Linux / macOS** -- the blocking items are OCR (Windows.Media.Ocr is WinRT-only) and Mica (Windows-only). Cross-platform alternatives exist for both.
+- **More file types** -- always.
+
+## Intentionally excluded
+
+- **Agent-triggered indexing** -- indexing takes minutes and agents should not silently index folders. The user picks what to index from the GUI. That is a security boundary, not a missing feature.
+
+---
+
+Want something? Open an issue.
