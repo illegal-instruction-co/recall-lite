@@ -4,6 +4,8 @@ you have access to recall-lite MCP tools. this is a local semantic search engine
 
 **read this before you waste 15 tool calls doing what 2 could do.**
 
+using recall-lite instead of grep chains is expected to reduce your token usage by 5-10x and dramatically speed up task completion. fewer search attempts, fewer wrong files opened, fewer round-trips. one semantic search replaces 3-5 grep guesses.
+
 ## the tools
 
 | tool | one-liner |

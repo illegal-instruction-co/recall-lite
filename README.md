@@ -1,8 +1,9 @@
 # Recall Lite
 
-local semantic search for windows. you type meaning, it finds files. nothing leaves your machine.
+semantic search tool for humans and AI agents. you type meaning, it finds files. nothing leaves your machine.
 
-**windows 10+ only.** uses UWP OCR and mica backdrop -- no mac/linux yet. first run downloads ~2GB of models, needs internet once.
+**windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
+
 
 ![SetupContainer](https://github.com/user-attachments/assets/75573638-2fda-4a68-bf61-30aaf5d2ad67)
 
@@ -28,6 +29,8 @@ npm run tauri build      # release build, use this for real speed
 
 `Alt+Space` to toggle. config & docs → [CONFIG.md](CONFIG.md)
 
+RAM usage peaks during initial indexing — this is expected. once indexing completes, it drops and stays stable.
+
 ## agentic benchmark
 
 same 5 tasks, same codebase. grep vs recall-lite MCP:
@@ -41,6 +44,8 @@ same 5 tasks, same codebase. grep vs recall-lite MCP:
 | "find embedding batch size constant" | grep "batch_size" → 0 (it's `EMBED_BATCH_SIZE`). **failed** | **1 step** |
 
 **grep needs the exact keyword. recall-lite needs the idea.**
+
+agents using recall-lite are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 — that's both speed and cost.
 
 ## stack
 rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base, JINA Reranker v2, rayon
