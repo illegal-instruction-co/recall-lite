@@ -70,6 +70,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          files: src-tauri/target/release/recall-mcp.exe
+          files: |
+            src-tauri/target/release/recall-mcp.exe
+            AGENT.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

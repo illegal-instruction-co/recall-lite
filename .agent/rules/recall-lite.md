@@ -1,1 +1,1 @@
-Read the file AGENT.md in this project root for instructions on how to use the recall-lite MCP tools.
+Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to use the recall-lite MCP tools.
