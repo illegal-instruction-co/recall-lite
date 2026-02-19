@@ -82,10 +82,11 @@ interface ResultsListProps {
     query: string;
     onOpenFile: (path: string) => void;
     listRef: React.RefObject<ListImperativeAPI | null>;
+    hotkey: string;
 }
 
 export default function ResultsList({
-    results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, listRef,
+    results, selectedIndex, setSelectedIndex, activeContainer, query, onOpenFile, listRef, hotkey,
 }: Readonly<ResultsListProps>) {
     const { t } = useLocale();
     const containerRef = useRef<HTMLDivElement>(null);
@@ -119,7 +120,7 @@ export default function ResultsList({
                         <p className="text-[10px] uppercase tracking-wider opacity-60">{t("results_shortcuts")}</p>
                         <div className="flex gap-4 opacity-50 text-xs font-mono">
                             <span>{t("results_shortcut_index")}</span>
-                            <span>{t("results_shortcut_toggle")}</span>
+                            <span>{hotkey} : {t("results_shortcut_toggle").split(" : ").pop()}</span>
                         </div>
                     </div>
                 </div>

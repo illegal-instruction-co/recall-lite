@@ -22,7 +22,7 @@
 
 ---
 
-**windows 10+ only** for now. uses UWP OCR and mica backdrop. first run downloads ~2GB of models, needs internet once.
+**windows 10+ only** for now. uses UWP OCR and mica backdrop. 
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/b11b0fc1-3a35-4854-8703-ff98f286a430" width="700" />
@@ -102,7 +102,7 @@ graph LR
 
 ```bash
 npm install
-npm run tauri dev        # downloads ~2GB models on first run
+npm run tauri dev        # dev is slow
 npm run tauri build      # release build, use this for real speed
 ```
 

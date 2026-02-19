@@ -26,6 +26,21 @@ impl Default for EmbeddingProviderConfig {
     }
 }
 
+impl EmbeddingProviderConfig {
+    pub fn provider_label(&self) -> String {
+        match self {
+            Self::Local { model } => format!("{} (local)", model),
+            Self::Remote(rc) => {
+                if rc.model.is_empty() {
+                    "Remote".to_string()
+                } else {
+                    rc.model.clone()
+                }
+            }
+        }
+    }
+}
+
 fn default_provider() -> EmbeddingProviderConfig {
     EmbeddingProviderConfig::default()
 }
@@ -58,6 +73,8 @@ impl Default for IndexingConfig {
 pub struct ContainerInfo {
     pub description: String,
     pub indexed_paths: Vec<String>,
+    #[serde(default)]
+    pub embedding_provider: Option<EmbeddingProviderConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -80,6 +97,8 @@ pub struct Config {
     pub active_container: String,
     #[serde(default)]
     pub first_run: bool,
+    #[serde(default = "default_true")]
+    pub use_reranker: bool,
 }
 
 fn default_schema() -> String {
@@ -100,6 +119,7 @@ impl Default for Config {
         containers.insert("Default".to_string(), ContainerInfo {
             description: String::new(),
             indexed_paths: Vec::new(),
+            embedding_provider: None,
         });
         Self {
             schema: default_schema(),
@@ -112,6 +132,7 @@ impl Default for Config {
             containers,
             active_container: "Default".to_string(),
             first_run: true,
+            use_reranker: true,
         }
     }
 }
@@ -288,6 +309,7 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                         containers.insert(name, ContainerInfo {
                             description: String::new(),
                             indexed_paths: Vec::new(),
+                            embedding_provider: None,
                         });
                     }
                 }
@@ -295,6 +317,7 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                     containers.insert("Default".to_string(), ContainerInfo {
                         description: String::new(),
                         indexed_paths: Vec::new(),
+                        embedding_provider: None,
                     });
                 }
                 let default_active = containers.keys().next().cloned().unwrap_or_else(|| "Default".to_string());
@@ -310,6 +333,7 @@ pub fn load_config(config_path: &std::path::Path) -> Config {
                     active_container: old.active_container.unwrap_or(default_active),
                     containers,
                     first_run: false,
+                    use_reranker: true,
                 }
             } else {
                 Config::default()

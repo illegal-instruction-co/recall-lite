@@ -7,6 +7,9 @@ interface ModalField {
     label: string;
     placeholder?: string;
     defaultValue?: string;
+    type?: "text" | "select" | "password" | "number";
+    options?: { value: string; label: string }[];
+    visible?: boolean;
 }
 
 interface ModalConfig {
@@ -140,19 +143,56 @@ export function ModalProvider() {
 
                 {config.type === "prompt" && config.fields && (
                     <div className="modal-fields">
-                        {config.fields.map((field, i) => (
-                            <div key={field.key} className="modal-field">
-                                <label className="modal-label">{field.label}</label>
-                                <input
-                                    ref={i === 0 ? firstInputRef : undefined}
-                                    className="modal-input"
-                                    placeholder={field.placeholder}
-                                    value={values[field.key] || ""}
-                                    onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
-                                    onKeyDown={(e) => handleInputKeyDown(e, values, config.fields!, close)}
-                                />
-                            </div>
-                        ))}
+                        {config.fields.map((field, i) => {
+                            if (field.visible === false) return null;
+                            const fieldType = field.type || "text";
+
+                            if (fieldType === "select" && field.options) {
+                                return (
+                                    <div key={field.key} className="modal-field">
+                                        <label className="modal-label">{field.label}</label>
+                                        <select
+                                            className="modal-input"
+                                            value={values[field.key] || ""}
+                                            onChange={(e) => setValues((v) => ({ ...v, [field.key]: e.target.value }))}
+                                        >
+                                            {field.options.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                );
+                            }
+
+                            let inputType: "text" | "number" | "password";
+
+                            if (fieldType === "password") {
+                                inputType = "password";
+                            } else if (fieldType === "number") {
+                                inputType = "number";
+                            } else {
+                                inputType = "text";
+                            }
+
+                            return (
+                                <div key={field.key} className="modal-field">
+                                    <label className="modal-label">{field.label}</label>
+                                    <input
+                                        ref={i === 0 ? firstInputRef : undefined}
+                                        className="modal-input"
+                                        type={inputType}
+                                        placeholder={field.placeholder}
+                                        value={values[field.key] || ""}
+                                        onChange={(e) =>
+                                            setValues((v) => ({ ...v, [field.key]: e.target.value }))
+                                        }
+                                        onKeyDown={(e) =>
+                                            handleInputKeyDown(e, values, config.fields!, close)
+                                        }
+                                    />
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 

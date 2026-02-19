@@ -42,4 +42,5 @@ pub struct ContainerListItem {
     pub name: String,
     pub description: String,
     pub indexed_paths: Vec<String>,
+    pub provider_label: String,
 }

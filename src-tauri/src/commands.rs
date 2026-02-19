@@ -20,10 +20,15 @@ pub async fn get_containers(
 ) -> Result<(Vec<ContainerListItem>, String), String> {
     let config = config_state.config.lock().await;
     let list: Vec<ContainerListItem> = config.containers.iter().map(|(name, info)| {
+        let provider_label = info.embedding_provider
+            .as_ref()
+            .map(|p| p.provider_label())
+            .unwrap_or_else(|| config.embedding_provider.provider_label());
         ContainerListItem {
             name: name.clone(),
             description: info.description.clone(),
             indexed_paths: info.indexed_paths.clone(),
+            provider_label,
         }
     }).collect();
     Ok((list, config.active_container.clone()))
@@ -33,16 +38,38 @@ pub async fn get_containers(
 pub async fn create_container(
     name: String,
     description: String,
+    provider_type: String,
+    embedding_model: Option<String>,
+    remote_endpoint: Option<String>,
+    remote_api_key: Option<String>,
+    remote_model: Option<String>,
+    remote_dimensions: Option<usize>,
     config_state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
-    info!("create_container: name=\"{}\"", name);
+    info!("create_container: name=\"{}\" provider_type={}", name, provider_type);
     let mut config = config_state.config.lock().await;
     if config.containers.contains_key(&name) {
         return Err("Container already exists".to_string());
     }
+
+    let provider = if provider_type == "remote" {
+        use crate::indexer::embedding_provider::RemoteProviderConfig;
+        EmbeddingProviderConfig::Remote(RemoteProviderConfig {
+            endpoint: remote_endpoint.unwrap_or_default(),
+            api_key: remote_api_key,
+            model: remote_model.unwrap_or_default(),
+            dimensions: remote_dimensions.unwrap_or(1024),
+        })
+    } else {
+        EmbeddingProviderConfig::Local {
+            model: embedding_model.unwrap_or_else(|| "MultilingualE5Base".to_string()),
+        }
+    };
+
     config.containers.insert(name, crate::config::ContainerInfo {
         description,
         indexed_paths: Vec::new(),
+        embedding_provider: Some(provider),
     });
     drop(config);
     config_state.save().await?;
@@ -93,9 +120,66 @@ pub async fn set_active_container(
     if !config.containers.contains_key(&name) {
         return Err("Container does not exist".to_string());
     }
-    config.active_container = name;
+    config.active_container = name.clone();
+
+    let provider_config = config.containers.get(&name)
+        .and_then(|c| c.embedding_provider.clone())
+        .unwrap_or_else(|| config.embedding_provider.clone());
+
     drop(config);
     config_state.save().await?;
+
+    let ps = provider_state.inner().clone();
+    let app_clone = app.clone();
+
+    {
+        let mut guard = ps.lock().await;
+        guard.provider = None;
+        guard.init_error = None;
+    }
+
+    match provider_config {
+        EmbeddingProviderConfig::Local { ref model } => {
+            let model_enum = crate::config::get_embedding_model(model);
+            let app_data = app_clone.path().app_data_dir().map_err(|e| e.to_string())?;
+            let models_path = app_data.join("models");
+            let load_result = tokio::task::spawn_blocking(move || {
+                indexer::load_model(model_enum, models_path)
+            }).await.map_err(|e| e.to_string())?;
+
+            match load_result {
+                Ok(model) => {
+                    use crate::indexer::embedding_provider::LocalProvider;
+                    use crate::state::ModelState;
+                    let model_state = Arc::new(Mutex::new(ModelState {
+                        model: Some(model),
+                        init_error: None,
+                        cached_dim: None,
+                    }));
+                    let provider = LocalProvider { model_state };
+                    let mut guard = ps.lock().await;
+                    guard.provider = Some(Box::new(provider));
+                    guard.init_error = None;
+                    let _ = app_clone.emit("model-loaded", ());
+                    info!("Provider switched to local model");
+                }
+                Err(e) => {
+                    let mut guard = ps.lock().await;
+                    guard.init_error = Some(e.to_string());
+                    let _ = app_clone.emit("model-load-error", e.to_string());
+                }
+            }
+        }
+        EmbeddingProviderConfig::Remote(ref rc) => {
+            use crate::indexer::embedding_provider::RemoteProvider;
+            let provider = RemoteProvider::new(rc.clone());
+            let mut guard = ps.lock().await;
+            guard.provider = Some(Box::new(provider));
+            guard.init_error = None;
+            let _ = app.emit("model-loaded", ());
+            info!("Provider switched to remote: {}", rc.model);
+        }
+    }
 
     let db = {
         let guard = db_state.lock().await;
@@ -152,7 +236,12 @@ pub async fn search(
 
     let rerank_input: Vec<(String, String, f32)> = merged.into_iter().take(15).collect();
 
-    let (final_results, used_reranker) = {
+    let reranker_enabled = {
+        let config = config_state.config.lock().await;
+        config.use_reranker
+    };
+
+    let (final_results, used_reranker) = if reranker_enabled {
         let mut guard = reranker_state.lock().await;
         if let Some(reranker) = guard.reranker.take() {
             let (reranker_back, results, used) =
@@ -166,6 +255,8 @@ pub async fn search(
         } else {
             (rerank_input, false)
         }
+    } else {
+        (rerank_input, false)
     };
 
     let scored = indexer::pipeline::score_results(final_results, used_reranker, used_hybrid, 20);
@@ -329,6 +420,7 @@ pub struct AppConfig {
     pub remote_model: String,
     pub remote_dimensions: usize,
     pub first_run: bool,
+    pub use_reranker: bool,
 }
 
 #[tauri::command]
@@ -369,6 +461,7 @@ pub async fn get_config(
         remote_model,
         remote_dimensions,
         first_run: config.first_run,
+        use_reranker: config.use_reranker,
     })
 }
 
@@ -389,6 +482,7 @@ pub struct ConfigUpdate {
     pub remote_model: Option<String>,
     pub remote_dimensions: Option<usize>,
     pub first_run: Option<bool>,
+    pub use_reranker: Option<bool>,
 }
 
 #[tauri::command]
@@ -497,6 +591,10 @@ pub async fn update_config(
 
         if let Some(v) = updates.first_run {
             config.first_run = v;
+        }
+
+        if let Some(v) = updates.use_reranker {
+            config.use_reranker = v;
         }
     }
 

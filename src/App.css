@@ -126,11 +126,12 @@ body {
   border: 1px solid var(--color-stroke-surface-default);
   border-radius: 8px;
   box-shadow: 0 0 0 1px var(--color-shadow), 0 8px 16px var(--color-shadow-heavy);
+  position: relative;
 }
 
 .search-wrapper {
   position: relative;
-  margin: 16px 16px 8px 16px;
+  margin: 40px 16px 8px 16px;
 }
 
 .search-input {
@@ -296,9 +297,14 @@ body {
   border: 1px solid transparent;
 }
 
-.container-item:hover {
+.container-item:hover:not(:disabled) {
   background: var(--color-control-fill-default);
   color: var(--color-text-primary);
+}
+
+.container-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .container-item.active {
@@ -422,6 +428,8 @@ body {
   background: var(--color-surface-status);
   backdrop-filter: blur(10px);
   color: var(--color-text-tertiary);
+  padding-left: 12px;
+  padding-right: 12px;
 }
 
 .progress-bar-track {

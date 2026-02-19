@@ -158,6 +158,11 @@
             },
             "additionalProperties": false
         },
+        "use_reranker": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable the cross-encoder reranker for result quality. Disable to save ~1GB RAM or when using high-quality remote embeddings"
+        },
         "containers": {
             "type": "object",
             "description": "Search containers. Each container is an isolated index",
@@ -174,6 +179,10 @@
                             "type": "string"
                         },
                         "description": "Absolute paths to indexed folders"
+                    },
+                    "embedding_provider": {
+                        "description": "Per-container embedding provider override. Snapshotted at container creation time. If absent, uses the global embedding_provider",
+                        "$ref": "#/properties/embedding_provider"
                     }
                 },
                 "required": [
@@ -193,5 +202,5 @@
         "containers",
         "active_container"
     ],
-    "additionalProperties": false
+    "additionalProperties": true
 }

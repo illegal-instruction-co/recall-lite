@@ -155,7 +155,19 @@ the app ships with a default `.rcignore` that excludes the obvious stuff (node_m
 
 each container = isolated index. separate lancedb table. delete a container --> its data is gone, no orphaned vectors floating around.
 
+new containers snapshot the current embedding provider at creation time. switching containers auto-loads the correct provider (local or remote), so you can have one container indexed with local E5 and another with OpenAI -- no manual switching needed.
+
 managed through the GUI, but you can edit this by hand if you want.
+
+## reranker
+
+```json
+{
+  "use_reranker": true
+}
+```
+
+default is `true`. the cross-encoder reranker improves result quality but uses ~1GB extra RAM. set to `false` to disable. if you're using high-quality remote embeddings (OpenAI, Gemini), disabling the reranker often gives better results anyway.
 
 ## supported file types
 

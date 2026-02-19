@@ -3,7 +3,6 @@ import { Settings as SettingsIcon, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useLocale } from "../i18n";
 import GeneralSettings from "./settings/GeneralSettings";
-import ProviderSettings from "./settings/ProviderSettings";
 import IndexingSettings from "./settings/IndexingSettings";
 import "./Settings.css";
 
@@ -23,6 +22,7 @@ interface AppConfig {
     remote_model: string;
     remote_dimensions: number;
     first_run: boolean;
+    use_reranker: boolean;
 }
 
 interface SettingsProps {
@@ -46,11 +46,6 @@ export default function Settings({ open, onClose }: Readonly<SettingsProps>) {
     const [hotkeyDirty, setHotkeyDirty] = useState(false);
     const [extraExtDraft, setExtraExtDraft] = useState("");
     const [excludedExtDraft, setExcludedExtDraft] = useState("");
-    const [remoteEndpointDraft, setRemoteEndpointDraft] = useState("");
-    const [remoteApiKeyDraft, setRemoteApiKeyDraft] = useState("");
-    const [remoteModelDraft, setRemoteModelDraft] = useState("");
-    const [remoteDimsDraft, setRemoteDimsDraft] = useState("1024");
-    const [providerChanged, setProviderChanged] = useState(false);
 
     useEffect(() => {
         if (open) {
@@ -60,11 +55,6 @@ export default function Settings({ open, onClose }: Readonly<SettingsProps>) {
                 setHotkeyDirty(false);
                 setExtraExtDraft(c.extra_extensions.join(", "));
                 setExcludedExtDraft(c.excluded_extensions.join(", "));
-                setRemoteEndpointDraft(c.remote_endpoint);
-                setRemoteApiKeyDraft(c.remote_api_key);
-                setRemoteModelDraft(c.remote_model);
-                setRemoteDimsDraft(String(c.remote_dimensions || 1024));
-                setProviderChanged(false);
             });
         }
     }, [open]);
@@ -100,21 +90,6 @@ export default function Settings({ open, onClose }: Readonly<SettingsProps>) {
 
                     <div className="settings-group">
                         <div className="settings-section-title">{t("settings_section_indexing")}</div>
-
-                        <ProviderSettings
-                            config={config}
-                            remoteEndpointDraft={remoteEndpointDraft}
-                            remoteApiKeyDraft={remoteApiKeyDraft}
-                            remoteModelDraft={remoteModelDraft}
-                            remoteDimsDraft={remoteDimsDraft}
-                            providerChanged={providerChanged}
-                            setRemoteEndpointDraft={setRemoteEndpointDraft}
-                            setRemoteApiKeyDraft={setRemoteApiKeyDraft}
-                            setRemoteModelDraft={setRemoteModelDraft}
-                            setRemoteDimsDraft={setRemoteDimsDraft}
-                            setProviderChanged={setProviderChanged}
-                            updateField={updateField}
-                        />
 
                         <IndexingSettings
                             config={config}

@@ -1,4 +1,4 @@
-import { Pin, Rocket, Keyboard, Globe } from "lucide-react";
+import { Pin, Rocket, Keyboard, Globe, Layers } from "lucide-react";
 import { useLocale } from "../../i18n";
 import { SettingsRow, SettingsToggle } from "./SettingsRow";
 import "./GeneralSettings.css";
@@ -7,6 +7,7 @@ interface AppConfig {
     always_on_top: boolean;
     launch_at_startup: boolean;
     hotkey: string;
+    use_reranker: boolean;
 }
 
 const localeLabels: Record<string, string> = { en: "English", tr: "Türkçe" };
@@ -104,6 +105,19 @@ export default function GeneralSettings({ config, hotkeyDraft, hotkeyDirty, onHo
                             </option>
                         ))}
                     </select>
+                }
+            />
+
+            <SettingsRow
+                icon={<Layers size={14} />}
+                label={t("settings_use_reranker")}
+                desc={t("settings_use_reranker_desc")}
+                control={
+                    <SettingsToggle
+                        label={t("settings_use_reranker")}
+                        checked={config.use_reranker}
+                        onChange={(v) => updateField({ use_reranker: v })}
+                    />
                 }
             />
         </div>

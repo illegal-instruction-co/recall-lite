@@ -28,6 +28,7 @@
     "dialog_field_description": "Description (AI Context)",
     "dialog_field_description_placeholder": "accounting files for acme corp",
     "dialog_create": "Create",
+    "dialog_next": "Next",
     "dialog_delete_title": "Delete Container",
     "dialog_delete_message": "Are you sure you want to delete '{{name}}'? All indexed data will be lost forever.",
     "dialog_delete_confirm": "Delete",
@@ -80,5 +81,7 @@
     "settings_remote_model_desc": "Model identifier for the API",
     "settings_remote_dimensions": "Dimensions",
     "settings_remote_dimensions_desc": "Vector dimensions from the remote model",
-    "settings_provider_changed_warning": "Provider changed — restart & reindex required for existing data"
+    "settings_provider_changed_warning": "Provider changed — restart & reindex required for existing data",
+    "settings_use_reranker": "Reranker",
+    "settings_use_reranker_desc": "Re-rank search results for better on small models accuracy (uses ~1GB RAM)"
 }

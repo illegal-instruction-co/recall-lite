@@ -2,7 +2,6 @@
 
 - ~~**MCP server**~~ done -- `rememex-mcp` binary exposes search as tools over stdio. any MCP client (cursor, claude desktop, copilot) can use it out of the box
 - ~~**file watcher**~~ done -- `notify` crate, OS-level events (zero CPU idle), 500ms debounce. auto re-embeds changed files, removes deleted ones. `reindex_all` now does delta instead of nuking the table like a maniac
-- **agentic search** -- local LLM that can grep --> read --> reason --> answer in a loop. notebooklm but private
 - ~~**vibe coding / agent support**~~ done -- MCP server is now agent-optimized:
   - ~~bigger context per result~~ done -- `context_bytes` param, up to 10KB per snippet
   - ~~file type / path filtering~~ done -- `file_extensions` and `path_prefix` params on search
@@ -30,6 +29,10 @@
   - ~~trait abstraction~~ done -- `EmbeddingProvider` + `RerankerProvider` -- local model implements it, cloud providers are plug-and-play
   - ~~user brings their own API key~~ done -- opts into the privacy trade-off consciously
   - ~~default is still 100% local~~ done -- nothing changes for existing users
+- ~~**per-container embedding model**~~ done -- each container snapshots its embedding provider at creation time. switching containers auto-loads the correct provider (local or remote). sidebar shows provider label per container. backward compatible: existing containers fall back to global provider
+- ~~**custom title bar**~~ done -- custom drag area with minimize + close (hide to tray) buttons. Windows 11 style, red close hover
+- ~~**UI polish**~~ done -- status bar padding fixed, hotkey shortcut label now reads from config instead of hardcoded "Alt+Space"
+- **content browser** -- browse indexed files visually like a file manager. image thumbnails, video previews, PDF first page, code with syntax highlighting. not just search -- let people explore their stuff naturally
 - **more file types** -- always
 
 want something? open an issue.

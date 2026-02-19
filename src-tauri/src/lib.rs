@@ -30,6 +30,7 @@ pub fn run() {
     let shortcut = parse_hotkey(&config.hotkey);
     let always_on_top = config.always_on_top;
     let launch_at_startup = config.launch_at_startup;
+    let use_reranker = config.use_reranker;
 
     tauri::Builder::default()
         .plugin(
@@ -58,7 +59,11 @@ pub fn run() {
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         if let Some(window) = app.get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
+                            if window.is_minimized().unwrap_or(false) {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            } else if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                             } else {
                                 let _ = window.show();
@@ -265,21 +270,25 @@ pub fn run() {
                 }
             }
 
-            tauri::async_runtime::spawn(async move {
-                info!("Loading reranker model...");
-                match indexer::load_reranker(reranker_models_path) {
-                    Ok(reranker) => {
-                        info!("Reranker loaded successfully");
-                        let mut state = reranker_state.lock().await;
-                        state.reranker = Some(reranker);
+            if use_reranker {
+                tauri::async_runtime::spawn(async move {
+                    info!("Loading reranker model...");
+                    match indexer::load_reranker(reranker_models_path) {
+                        Ok(reranker) => {
+                            info!("Reranker loaded successfully");
+                            let mut state = reranker_state.lock().await;
+                            state.reranker = Some(reranker);
+                        }
+                        Err(e) => {
+                            warn!("Reranker load failed (non-fatal): {}", e);
+                            let mut state = reranker_state.lock().await;
+                            state.init_error = Some(e.to_string());
+                        }
                     }
-                    Err(e) => {
-                        warn!("Reranker load failed (non-fatal): {}", e);
-                        let mut state = reranker_state.lock().await;
-                        state.init_error = Some(e.to_string());
-                    }
-                }
-            });
+                });
+            } else {
+                info!("Reranker disabled in config, skipping model load");
+            }
 
             if let Ok(home_dir) = app.path().home_dir() {
                 tauri::async_runtime::spawn(async move {

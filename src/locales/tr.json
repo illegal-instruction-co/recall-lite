@@ -28,6 +28,7 @@
     "dialog_field_description": "Açıklama (AI Bağlamı)",
     "dialog_field_description_placeholder": "acme şirketi için muhasebe dosyaları",
     "dialog_create": "Oluştur",
+    "dialog_next": "İleri",
     "dialog_delete_title": "Konteyneri Sil",
     "dialog_delete_message": "'{{name}}' silinsin mi? Tüm indexlenmiş veriler kalıcı olarak kaybolacak.",
     "dialog_delete_confirm": "Sil",
@@ -80,5 +81,7 @@
     "settings_remote_model_desc": "API için model tanımlayıcı",
     "settings_remote_dimensions": "Boyutlar",
     "settings_remote_dimensions_desc": "Uzak modelden gelen vektör boyutları",
-    "settings_provider_changed_warning": "Sağlayıcı değişti — mevcut veriler için yeniden başlatma ve indexleme gerekli"
+    "settings_provider_changed_warning": "Sağlayıcı değişti — mevcut veriler için yeniden başlatma ve indexleme gerekli",
+    "settings_use_reranker": "Reranker",
+    "settings_use_reranker_desc": "Arama sonuçlarını küçük modellerde daha iyi sıralamak için yeniden sırala (~1GB RAM kullanır)"
 }
