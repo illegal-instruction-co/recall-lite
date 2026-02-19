@@ -1,17 +1,17 @@
 [package]
-name = "recall-lite"
+name = "rememex"
 version = "1.9.5"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"
-default-run = "recall-lite"
+default-run = "rememex"
 
 [lib]
-name = "recall_lite_lib"
+name = "rememex_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [[bin]]
-name = "recall-mcp"
+name = "rememex-mcp"
 path = "src/bin/mcp.rs"
 
 [build-dependencies]
@@ -45,6 +45,11 @@ notify-debouncer-full = "0.5"
 ignore = "0.4"
 git2 = "0.20"
 tauri-plugin-autostart = "2"
+reqwest = { version = "0.12", features = ["json"] }
+async-trait = "0.1"
+log = "0.4"
+tauri-plugin-log = "2"
+env_logger = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61", features = [

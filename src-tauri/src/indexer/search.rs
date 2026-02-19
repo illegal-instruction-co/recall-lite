@@ -7,6 +7,7 @@ use lancedb::connection::Connection;
 use lancedb::index::scalar::FullTextSearchQuery;
 use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::DistanceType;
+use log::{debug, warn};
 
 pub fn build_filter_expr(
     path_prefix: Option<&str>,
@@ -66,6 +67,7 @@ pub async fn search_files(
     if let Ok(field) = schema.field_with_name("vector") {
         if let arrow_schema::DataType::FixedSizeList(_, size) = field.data_type() {
             if *size != query_vector.len() as i32 {
+                warn!("Dimension mismatch: index has {}-dim vectors, query has {}-dim", size, query_vector.len());
                 return Err(anyhow!(
                     "Model changed: index has {}-dim vectors but current model produces {}-dim. Please rebuild the index.",
                     size, query_vector.len()
@@ -318,6 +320,8 @@ pub async fn search_pipeline(
 
     let (vector_result, fts_results) = tokio::join!(vector_fut, fts_fut);
     let vector_results = vector_result?;
+
+    debug!("Search pipeline: {} vector results, {} FTS results", vector_results.len(), fts_results.len());
 
     let used_hybrid = !fts_results.is_empty();
     let merged = if fts_results.is_empty() {

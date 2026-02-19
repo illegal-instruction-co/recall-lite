@@ -59,14 +59,18 @@ export default function Sidebar({
                             <div key={c.name} className="container-item-wrapper">
                                 <button
                                     type="button"
-                                    className={`container-item container-item-full ${activeContainer === c.name ? 'active' : ''}`}
-                                    onClick={() => onSwitchContainer(c.name)}
+                                    className={`container-item container-item-full ${activeContainer === c.name ? 'active' : ''} ${isIndexing ? 'disabled' : ''}`}
+                                    onClick={() => !isIndexing && onSwitchContainer(c.name)}
+                                    disabled={isIndexing}
                                 >
                                     <Box size={14} className="icon" />
                                     <div className="container-item-content">
                                         <span className="container-item-name">{c.name}</span>
                                         {c.description && (
                                             <span className="container-item-desc">{c.description}</span>
+                                        )}
+                                        {c.provider_label && (
+                                            <span className="container-item-desc" style={{ opacity: 0.3, fontSize: '9px' }}>{c.provider_label}</span>
                                         )}
                                     </div>
                                 </button>

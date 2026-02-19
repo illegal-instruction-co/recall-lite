@@ -12,7 +12,7 @@ interface SearchBarProps {
 
 export default function SearchBar({
     query, onQueryChange, activeContainer, isIndexing, onPickFolder, inputRef,
-}: SearchBarProps) {
+}: Readonly<SearchBarProps>) {
     const { t } = useLocale();
 
     return (

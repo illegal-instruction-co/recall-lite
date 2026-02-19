@@ -1,18 +1,90 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "Recall-Lite Config",
-    "description": "Configuration for Recall-Lite local semantic search",
+    "title": "Rememex Config",
+    "description": "Configuration for Rememex local semantic search",
     "type": "object",
     "properties": {
-        "embedding_model": {
-            "type": "string",
-            "enum": [
-                "AllMiniLML6V2",
-                "MultilingualE5Small",
-                "MultilingualE5Base"
-            ],
-            "default": "MultilingualE5Base",
-            "description": "Embedding model to use. Changing this requires a full reindex."
+        "embedding_provider": {
+            "description": "Embedding provider configuration. Local runs models on your machine. Remote calls an OpenAI-compatible API",
+            "default": {
+                "type": "local",
+                "model": "MultilingualE5Base"
+            },
+            "oneOf": [
+                {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "const": "local"
+                        },
+                        "model": {
+                            "type": "string",
+                            "enum": [
+                                "AllMiniLML6V2",
+                                "MultilingualE5Small",
+                                "MultilingualE5Base"
+                            ],
+                            "default": "MultilingualE5Base",
+                            "description": "Local embedding model. Changing this requires a full reindex"
+                        }
+                    },
+                    "required": [
+                        "type",
+                        "model"
+                    ],
+                    "additionalProperties": false
+                },
+                {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "const": "remote"
+                        },
+                        "endpoint": {
+                            "type": "string",
+                            "format": "uri",
+                            "description": "OpenAI-compatible embeddings API URL",
+                            "examples": [
+                                "https://api.openai.com/v1/embeddings",
+                                "http://localhost:11434/api/embeddings"
+                            ]
+                        },
+                        "api_key": {
+                            "type": "string",
+                            "description": "API key, sent as Bearer token. Leave empty for local servers"
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Model name sent in the request body",
+                            "examples": [
+                                "text-embedding-3-small",
+                                "text-embedding-3-large",
+                                "nomic-embed-text"
+                            ]
+                        },
+                        "dimensions": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Output vector dimensions. Must match the model. Wrong value = broken index",
+                            "examples": [
+                                384,
+                                768,
+                                1536,
+                                3072
+                            ]
+                        }
+                    },
+                    "required": [
+                        "type",
+                        "endpoint",
+                        "model",
+                        "dimensions"
+                    ],
+                    "additionalProperties": false
+                }
+            ]
         },
         "hotkey": {
             "type": "string",
@@ -35,7 +107,7 @@
         "launch_at_startup": {
             "type": "boolean",
             "default": false,
-            "description": "Automatically start Recall-Lite when you log in. Adds to system startup programs"
+            "description": "Automatically start Rememex when you log in. Adds to system startup programs"
         },
         "indexing": {
             "type": "object",
@@ -86,6 +158,11 @@
             },
             "additionalProperties": false
         },
+        "use_reranker": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable the cross-encoder reranker for result quality. Disable to save ~1GB RAM or when using high-quality remote embeddings"
+        },
         "containers": {
             "type": "object",
             "description": "Search containers. Each container is an isolated index",
@@ -102,6 +179,10 @@
                             "type": "string"
                         },
                         "description": "Absolute paths to indexed folders"
+                    },
+                    "embedding_provider": {
+                        "description": "Per-container embedding provider override. Snapshotted at container creation time. If absent, uses the global embedding_provider",
+                        "$ref": "#/properties/embedding_provider"
                     }
                 },
                 "required": [
@@ -117,9 +198,9 @@
         }
     },
     "required": [
-        "embedding_model",
+        "embedding_provider",
         "containers",
         "active_container"
     ],
-    "additionalProperties": false
+    "additionalProperties": true
 }

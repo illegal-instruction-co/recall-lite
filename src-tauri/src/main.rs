@@ -6,5 +6,5 @@ use mimalloc::MiMalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 fn main() {
-    recall_lite_lib::run()
+    rememex_lib::run()
 }

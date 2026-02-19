@@ -10,8 +10,10 @@ import Sidebar from "./components/Sidebar";
 import SearchBar from "./components/SearchBar";
 import ResultsList from "./components/ResultsList";
 import StatusBar from "./components/StatusBar";
+import TitleBar from "./components/TitleBar";
 import Settings from "./components/Settings";
 import type { SearchResult, IndexingProgress, ContainerItem } from "./types";
+import logoSrc from "./assets/rememex.png";
 import "./App.css";
 
 function getFileName(path: string): string {
@@ -30,14 +32,24 @@ function App() {
   const [activeContainer, setActiveContainer] = useState("Default");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [hotkey, setHotkey] = useState("Alt + Space");
   const modal = useModal();
   const { t } = useLocale();
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<ListImperativeAPI>(null);
+  const isFirstRunRef = useRef(false);
 
   useEffect(() => {
     fetchContainers();
+    invoke<{ first_run: boolean; provider_type: string; hotkey: string }>("get_config").then((c) => {
+      setHotkey(c.hotkey);
+      if (c.first_run) {
+        isFirstRunRef.current = true;
+        setSettingsOpen(true);
+        invoke("update_config", { updates: { first_run: false } }).catch(() => { });
+      }
+    }).catch(() => { });
   }, []);
 
   async function fetchContainers() {
@@ -51,24 +63,86 @@ function App() {
   }
 
   async function handleCreateContainer() {
-    const result = await modal.prompt({
+    const step1 = await modal.prompt({
       title: t("dialog_new_container"),
       icon: "info",
       fields: [
         { key: "name", label: t("dialog_field_name"), placeholder: t("dialog_field_name_placeholder") },
         { key: "description", label: t("dialog_field_description"), placeholder: t("dialog_field_description_placeholder") },
+        {
+          key: "provider_type", label: "Provider", type: "select" as const,
+          defaultValue: "local",
+          options: [
+            { value: "local", label: "Local (on-device)" },
+            { value: "remote", label: "Remote (API)" },
+          ],
+        },
       ],
-      confirmText: t("dialog_create"),
+      confirmText: t("dialog_next"),
     });
 
-    if (!result.confirmed || !result.values?.name?.trim()) return;
+    if (!step1.confirmed || !step1.values?.name?.trim()) return;
+
+    const providerType = step1.values.provider_type || "local";
+    let embeddingModel = "MultilingualE5Base";
+    let remoteEndpoint = "";
+    let remoteApiKey = "";
+    let remoteModel = "";
+    let remoteDimensions = 1024;
+
+    if (providerType === "local") {
+      const step2 = await modal.prompt({
+        title: "Embedding Model",
+        icon: "info",
+        fields: [
+          {
+            key: "embedding_model", label: "Model", type: "select" as const,
+            defaultValue: "MultilingualE5Base",
+            options: [
+              { value: "AllMiniLML6V2", label: "MiniLM L6 v2 (Fast)" },
+              { value: "MultilingualE5Small", label: "Multilingual E5 Small" },
+              { value: "MultilingualE5Base", label: "Multilingual E5 Base" },
+            ],
+          },
+        ],
+        confirmText: t("dialog_create"),
+      });
+      if (!step2.confirmed) return;
+      embeddingModel = step2.values?.embedding_model || "MultilingualE5Base";
+    } else {
+      const step2 = await modal.prompt({
+        title: "Remote Provider",
+        icon: "info",
+        fields: [
+          { key: "endpoint", label: "Endpoint", placeholder: "https://api.openai.com/v1/embeddings" },
+          { key: "api_key", label: "API Key", type: "password" as const, placeholder: "sk-..." },
+          { key: "model", label: "Model Name", placeholder: "text-embedding-3-small" },
+          { key: "dimensions", label: "Dimensions", type: "number" as const, defaultValue: "1024", placeholder: "1024" },
+        ],
+        confirmText: t("dialog_create"),
+      });
+
+      if (!step2.confirmed || !step2.values?.endpoint?.trim()) return;
+
+      remoteEndpoint = step2.values.endpoint.trim();
+      remoteApiKey = (step2.values.api_key || "").trim();
+      remoteModel = (step2.values.model || "").trim();
+      remoteDimensions = Number.parseInt(step2.values.dimensions || "1024", 10) || 1024;
+    }
 
     try {
       await invoke("create_container", {
-        name: result.values.name.trim(),
-        description: (result.values.description || "").trim(),
+        name: step1.values.name.trim(),
+        description: (step1.values.description || "").trim(),
+        providerType,
+        embeddingModel,
+        remoteEndpoint: remoteEndpoint || null,
+        remoteApiKey: remoteApiKey || null,
+        remoteModel: remoteModel || null,
+        remoteDimensions: remoteDimensions || null,
       });
       await fetchContainers();
+      await handleSwitchContainer(step1.values.name.trim());
     } catch (e) {
       await modal.confirm({ title: "Error", message: String(e), icon: "warning", confirmText: t("modal_ok") });
     }
@@ -98,13 +172,13 @@ function App() {
 
   async function handleSwitchContainer(name: string) {
     if (name === activeContainer) return;
+    setActiveContainer(name);
+    setResults([]);
+    setQuery("");
+    setStatus(t("status_switched", { name }));
+    searchInputRef.current?.focus();
     try {
       await invoke("set_active_container", { name });
-      setActiveContainer(name);
-      setResults([]);
-      setQuery("");
-      setStatus(t("status_switched", { name }));
-      searchInputRef.current?.focus();
     } catch (e) {
       console.error(e);
     }
@@ -281,7 +355,8 @@ function App() {
 
   return (
     <>
-      <div className="app-container">
+      <div className="app-container" style={{ '--logo-url': `url(${logoSrc})` } as React.CSSProperties}>
+        <TitleBar />
         <Sidebar
           containers={containers}
           activeContainer={activeContainer}
@@ -311,6 +386,7 @@ function App() {
             query={query}
             onOpenFile={(p) => { handleOpenFile(p).catch(() => { }); }}
             listRef={listRef}
+            hotkey={hotkey}
           />
           <StatusBar
             status={status}
@@ -323,7 +399,24 @@ function App() {
         </div>
       </div>
       <ModalProvider />
-      <Settings open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <Settings open={settingsOpen} onClose={() => {
+        setSettingsOpen(false);
+        if (isFirstRunRef.current) {
+          isFirstRunRef.current = false;
+          invoke<{ provider_type: string; remote_endpoint: string; remote_api_key: string; remote_model: string; remote_dimensions: number; embedding_model: string }>("get_config").then((c) => {
+            invoke("update_config", {
+              updates: {
+                provider_type: c.provider_type,
+                remote_endpoint: c.remote_endpoint,
+                remote_api_key: c.remote_api_key,
+                remote_model: c.remote_model,
+                remote_dimensions: c.remote_dimensions,
+                embedding_model: c.embedding_model,
+              }
+            }).catch(() => { });
+          }).catch(() => { });
+        }
+      }} />
     </>
   );
 }

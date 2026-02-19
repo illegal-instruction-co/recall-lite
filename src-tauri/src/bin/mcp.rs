@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use log::{info, debug};
+
 use mimalloc::MiMalloc;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::handler::server::tool::ToolRouter;
@@ -12,25 +14,23 @@ use rmcp::{tool_handler, tool_router, schemars, ErrorData as McpError, ServerHan
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-use recall_lite_lib::config::{get_embedding_model, get_table_name, load_config, Config};
-use recall_lite_lib::indexer;
+use rememex_lib::config::{get_embedding_model, get_table_name, load_config, Config, EmbeddingProviderConfig};
+use rememex_lib::indexer;
+use rememex_lib::indexer::embedding_provider::{EmbeddingProvider, LocalProvider, RemoteProvider};
+use rememex_lib::state::ModelState;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-struct Models {
-    model: fastembed::TextEmbedding,
-    reranker: Option<fastembed::TextRerank>,
-}
-
 struct AppState {
     db: lancedb::Connection,
-    models: Arc<Mutex<Models>>,
+    provider: Arc<Mutex<Box<dyn EmbeddingProvider>>>,
+    reranker: Arc<Mutex<Option<fastembed::TextRerank>>>,
     config: Config,
 }
 
 #[derive(Clone)]
-pub struct RecallServer {
+pub struct RememexServer {
     state: Arc<AppState>,
     tool_router: ToolRouter<Self>,
 }
@@ -130,7 +130,7 @@ fn parse_duration(s: &str) -> Option<u64> {
 }
 
 #[tool_router]
-impl RecallServer {
+impl RememexServer {
     fn new(state: Arc<AppState>) -> Self {
         Self {
             state,
@@ -141,28 +141,29 @@ impl RecallServer {
     #[tool(
         description = "Search indexed files using semantic + keyword hybrid search. Returns ranked results with file paths, relevant snippets, and relevance scores."
     )]
-    async fn recall_search(
+    async fn rememex_search(
         &self,
         Parameters(SearchParams { query, container, top_k, file_extensions, path_prefix, context_bytes, min_score }): Parameters<SearchParams>,
     ) -> Result<CallToolResult, McpError> {
+        debug!("rememex_search: query=\"{}\", container={:?}, top_k={:?}", query, container, top_k);
         let container =
             container.unwrap_or_else(|| self.state.config.active_container.clone());
         let table_name = get_table_name(&container);
 
-        let top_k = top_k.unwrap_or(10).min(50).max(1);
-        let context_bytes = context_bytes.unwrap_or(1500).min(10000).max(100);
+        let top_k = top_k.unwrap_or(10).clamp(1, 50);
+        let context_bytes = context_bytes.unwrap_or(1500).clamp(100, 10000);
 
         let table_check = self.state.db.table_names().execute().await
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
         if !table_check.iter().any(|t| t == &table_name) {
             return Ok(CallToolResult::success(vec![Content::text(
-                format!("no index found for container '{}'. open Recall Lite and index some folders first.", container),
+                format!("no index found for container '{}'. open Rememex and index some folders first.", container),
             )]));
         }
 
         let query_vector = {
-            let mut guard = self.state.models.lock().await;
-            indexer::embed_query(&mut guard.model, &query)
+            let guard = self.state.provider.lock().await;
+            guard.embed_query(&query).await
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?
         };
 
@@ -182,15 +183,15 @@ impl RecallServer {
 
         let (final_results, used_reranker) = {
             let reranker = {
-                let mut guard = self.state.models.lock().await;
-                guard.reranker.take()
+                let mut guard = self.state.reranker.lock().await;
+                guard.take()
             };
             if let Some(reranker) = reranker {
                 let (reranker_back, results, used) =
                     indexer::safe_rerank(reranker, query.clone(), rerank_input.clone()).await;
                 {
-                    let mut guard = self.state.models.lock().await;
-                    guard.reranker = reranker_back;
+                    let mut guard = self.state.reranker.lock().await;
+                    *guard = reranker_back;
                 }
                 if used {
                     (results, true)
@@ -224,14 +225,15 @@ impl RecallServer {
     #[tool(
         description = "Read file content by path. Supports optional line range. The file must be within an indexed container."
     )]
-    async fn recall_read_file(
+    async fn rememex_read_file(
         &self,
         Parameters(ReadFileParams { path, start_line, end_line }): Parameters<ReadFileParams>,
     ) -> Result<CallToolResult, McpError> {
+        debug!("rememex_read_file: path={}, lines={:?}-{:?}", path, start_line, end_line);
         let file_path = PathBuf::from(&path);
 
         let mut authorized = false;
-        for (name, _) in &self.state.config.containers {
+        for name in self.state.config.containers.keys() {
             if is_path_within_container(&file_path, &self.state.config, name) {
                 authorized = true;
                 break;
@@ -296,7 +298,7 @@ impl RecallServer {
     #[tool(
         description = "List indexed file paths with metadata. Returns deduplicated file list from the search index."
     )]
-    async fn recall_list_files(
+    async fn rememex_list_files(
         &self,
         Parameters(ListFilesParams { container, path_prefix, extensions }): Parameters<ListFilesParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -367,7 +369,7 @@ impl RecallServer {
     #[tool(
         description = "Get index status: total files, total chunks, and container metadata. Use this to check if the index is populated before searching."
     )]
-    async fn recall_index_status(
+    async fn rememex_index_status(
         &self,
         Parameters(IndexStatusParams { container }): Parameters<IndexStatusParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -444,7 +446,7 @@ impl RecallServer {
     #[tool(
         description = "Find files that changed recently. Returns paths, timestamps, and optionally git-style diffs. Use at conversation start to understand what's been modified."
     )]
-    async fn recall_diff(
+    async fn rememex_diff(
         &self,
         Parameters(DiffParams { since, container, show_diff }): Parameters<DiffParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -554,7 +556,7 @@ impl RecallServer {
     #[tool(
         description = "Find files semantically related to a given file. Uses vector proximity in the embedding space -- finds files with similar meaning, not just similar names."
     )]
-    async fn recall_related(
+    async fn rememex_related(
         &self,
         Parameters(RelatedParams { path, container, top_k }): Parameters<RelatedParams>,
     ) -> Result<CallToolResult, McpError> {
@@ -565,7 +567,7 @@ impl RecallServer {
         let container =
             container.unwrap_or_else(|| self.state.config.active_container.clone());
         let table_name = get_table_name(&container);
-        let top_k = top_k.unwrap_or(10).min(30).max(1);
+        let top_k = top_k.unwrap_or(10).clamp(1, 30);
 
         let table = match self.state.db.open_table(&table_name).execute().await {
             Ok(t) => t,
@@ -703,7 +705,7 @@ impl RecallServer {
     #[tool(
         description = "List all search containers (collections of indexed folders) with their names, descriptions, and indexed paths."
     )]
-    async fn recall_list_containers(
+    async fn rememex_list_containers(
         &self,
     ) -> Result<CallToolResult, McpError> {
         let containers: Vec<serde_json::Value> = self
@@ -729,24 +731,24 @@ impl RecallServer {
 }
 
 #[tool_handler]
-impl ServerHandler for RecallServer {
+impl ServerHandler for RememexServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo {
             protocol_version: Default::default(),
             server_info: Implementation {
-                name: "recall-lite".into(),
+                name: "rememex".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
                 ..Default::default()
             },
             instructions: Some(
-                "Recall-Lite: local semantic file search for AI agents. \
-                 Use recall_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes, min_score). \
-                 Use recall_read_file to read file content by path (with optional line range). \
-                 Use recall_list_files to browse indexed file paths. \
-                 Use recall_index_status to check index health and stats. \
-                 Use recall_diff to see what files changed recently (e.g. '2h', '1d'). Start conversations with this. \
-                 Use recall_related to find semantically similar files to a given file path. \
-                 Use recall_list_containers to see available search scopes."
+                "Rememex: local semantic file search for AI agents. \
+                 Use rememex_search to find files by meaning with filtering (top_k, file_extensions, path_prefix, context_bytes, min_score). \
+                 Use rememex_read_file to read file content by path (with optional line range). \
+                 Use rememex_list_files to browse indexed file paths. \
+                 Use rememex_index_status to check index health and stats. \
+                 Use rememex_diff to see what files changed recently (e.g. '2h', '1d'). Start conversations with this. \
+                 Use rememex_related to find semantically similar files to a given file path. \
+                 Use rememex_list_containers to see available search scopes."
                     .into(),
             ),
             capabilities: ServerCapabilities::builder().enable_tools().build(),
@@ -761,11 +763,16 @@ fn get_app_data_dir() -> std::path::PathBuf {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
             format!("{}/.local/share", home)
         });
-    std::path::PathBuf::from(base).join("com.recall-lite.app")
+    std::path::PathBuf::from(base).join("com.rememex.app")
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .target(env_logger::Target::Stderr)
+        .init();
+
+    info!("MCP server starting...");
     let app_data = get_app_data_dir();
     let models_path = app_data.join("models");
 
@@ -776,18 +783,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config_path = app_data.join("config.json");
     let config = load_config(&config_path);
+    info!("Config loaded, active container: {}", config.active_container);
 
-    let model_enum = get_embedding_model(&config.embedding_model);
-    let model = indexer::load_model(model_enum, models_path.clone())?;
+    let provider: Box<dyn EmbeddingProvider> = match &config.embedding_provider {
+        EmbeddingProviderConfig::Local { model } => {
+            let model_enum = get_embedding_model(model);
+            let model = indexer::load_model(model_enum, models_path.clone())?;
+            let model_state = Arc::new(Mutex::new(ModelState {
+                model: Some(model),
+                init_error: None,
+                cached_dim: None,
+            }));
+            Box::new(LocalProvider { model_state })
+        }
+        EmbeddingProviderConfig::Remote(rc) => {
+            Box::new(RemoteProvider::new(rc.clone()))
+        }
+    };
+    info!("Embedding provider ready");
+
     let reranker = indexer::load_reranker(models_path).ok();
 
     let state = Arc::new(AppState {
         db,
-        models: Arc::new(Mutex::new(Models { model, reranker })),
+        provider: Arc::new(Mutex::new(provider)),
+        reranker: Arc::new(Mutex::new(reranker)),
         config,
     });
 
-    let server = RecallServer::new(state);
+    let server = RememexServer::new(state);
     let service = server.serve(stdio()).await?;
     service.waiting().await?;
 

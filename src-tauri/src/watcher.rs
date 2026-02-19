@@ -3,6 +3,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use log::{info, error, debug};
+
 use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
 use notify_debouncer_full::notify::{self, RecursiveMode};
 use tauri::{AppHandle, Emitter};
@@ -10,7 +12,7 @@ use tokio::sync::Mutex;
 
 use crate::config::{get_table_name, ConfigState};
 use crate::indexer;
-use crate::state::{IndexingProgress, ModelState};
+use crate::state::{IndexingProgress, ProviderState};
 
 fn build_gitignore(roots: &[String]) -> Option<ignore::gitignore::Gitignore> {
     if roots.is_empty() { return None; }
@@ -42,7 +44,7 @@ pub async fn restart(
     watcher_state: &WatcherState,
     config_state: &ConfigState,
     db: lancedb::Connection,
-    model_state: Arc<Mutex<ModelState>>,
+    provider_state: Arc<Mutex<ProviderState>>,
     app: AppHandle,
 ) {
     let handle = {
@@ -53,30 +55,40 @@ pub async fn restart(
             .get(&config.active_container)
             .map(|info| info.indexed_paths.clone())
             .unwrap_or_default();
-        let use_git_history = config.indexing.use_git_history;
-        let chunk_size = config.indexing.chunk_size;
-        let chunk_overlap = config.indexing.chunk_overlap;
+        let wc = WatcherConfig {
+            use_git_history: config.indexing.use_git_history,
+            chunk_size: config.indexing.chunk_size,
+            chunk_overlap: config.indexing.chunk_overlap,
+        };
         drop(config);
-        start_watcher(paths, db, model_state, table_name, app, use_git_history, chunk_size, chunk_overlap)
+        start_watcher(paths, db, provider_state, table_name, app, wc)
     };
 
+    info!("File watcher restarted");
     let mut guard = watcher_state.lock().await;
     *guard = handle;
+}
+
+struct WatcherConfig {
+    use_git_history: bool,
+    chunk_size: Option<usize>,
+    chunk_overlap: Option<usize>,
 }
 
 fn start_watcher(
     paths: Vec<String>,
     db: lancedb::Connection,
-    model_state: Arc<Mutex<ModelState>>,
+    provider_state: Arc<Mutex<ProviderState>>,
     table_name: String,
     app: AppHandle,
-    use_git_history: bool,
-    chunk_size: Option<usize>,
-    chunk_overlap: Option<usize>,
+    wc: WatcherConfig,
 ) -> Option<WatcherHandle> {
     if paths.is_empty() {
+        debug!("No paths to watch, skipping watcher");
         return None;
     }
+
+    info!("Starting file watcher for {} paths", paths.len());
 
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -86,7 +98,10 @@ fn start_watcher(
         }
     }) {
         Ok(d) => d,
-        Err(_) => return None,
+        Err(e) => {
+            error!("Failed to create file watcher debouncer: {}", e);
+            return None;
+        }
     };
 
     for path in &paths {
@@ -108,7 +123,7 @@ fn start_watcher(
                 match event.kind {
                     EventKind::Create(_) | EventKind::Modify(_) => {
                         for p in &event.paths {
-                            let dominated = gitignore.as_ref().map_or(false, |gi| {
+                            let dominated = gitignore.as_ref().is_some_and(|gi| {
                                 gi.matched_path_or_any_parents(p, false).is_ignore()
                             });
                             if p.is_file() && !dominated {
@@ -118,7 +133,7 @@ fn start_watcher(
                     }
                     EventKind::Remove(_) => {
                         for p in &event.paths {
-                            let dominated = gitignore.as_ref().map_or(false, |gi| {
+                            let dominated = gitignore.as_ref().is_some_and(|gi| {
                                 gi.matched_path_or_any_parents(p, false).is_ignore()
                             });
                             if !dominated {
@@ -135,7 +150,7 @@ fn start_watcher(
             }
 
             let db = db.clone();
-            let ms = model_state.clone();
+            let ms = provider_state.clone();
             let tn = table_name.clone();
             let app = app.clone();
             let lock = indexing_lock.clone();
@@ -145,6 +160,8 @@ fn start_watcher(
 
             rt.spawn(async move {
                 let _guard = lock.lock().await;
+
+                debug!("Auto-reindexing {} changed, {} deleted files", changed.len(), deleted.len());
 
                 let _ = app.emit("indexing-progress", IndexingProgress {
                     current: 0,
@@ -157,14 +174,14 @@ fn start_watcher(
                 for path in &deleted {
                     let path_str = path.to_string_lossy().to_string();
                     if let Err(e) = indexer::delete_file_from_index(&path_str, &tn, &db).await {
-                        let _ = app.emit("watcher-error", format!("Failed to remove {}: {}", path_str, e));
+                        error!("Failed to remove {} from index: {}", path_str, e);
                     }
                     count += 1;
                 }
 
                 for path in &changed {
-                    if let Err(e) = indexer::index_single_file(path, &tn, &db, &ms, use_git_history, chunk_size, chunk_overlap).await {
-                        let _ = app.emit("watcher-error", format!("Failed to index {}: {}", path.display(), e));
+                    if let Err(e) = indexer::index_single_file(path, &tn, &db, &ms, wc.use_git_history, wc.chunk_size, wc.chunk_overlap).await {
+                        error!("Failed to index {}: {}", path.display(), e);
                     }
                     count += 1;
                     let _ = app.emit("indexing-progress", IndexingProgress {

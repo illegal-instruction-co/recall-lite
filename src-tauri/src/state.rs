@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use crate::indexer::embedding_provider::EmbeddingProvider;
+
 pub struct DbState {
     pub db: lancedb::Connection,
     pub path: std::path::PathBuf,
@@ -13,6 +15,11 @@ pub struct ModelState {
 
 pub struct RerankerState {
     pub reranker: Option<fastembed::TextRerank>,
+    pub init_error: Option<String>,
+}
+
+pub struct ProviderState {
+    pub provider: Option<Box<dyn EmbeddingProvider>>,
     pub init_error: Option<String>,
 }
 
@@ -35,4 +42,5 @@ pub struct ContainerListItem {
     pub name: String,
     pub description: String,
     pub indexed_paths: Vec<String>,
+    pub provider_label: String,
 }

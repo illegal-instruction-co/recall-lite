@@ -28,14 +28,14 @@ const LocaleContext = createContext<LocaleContextType>({
 
 export function LocaleProvider({ children }: Readonly<{ children: React.ReactNode }>) {
     const [currentLocale, setCurrentLocale] = useState(() => {
-        const saved = localStorage.getItem("recall-locale");
+        const saved = localStorage.getItem("rememex-locale");
         return saved && saved in locales ? saved : getSystemLocale();
     });
 
     const setLocale = useCallback((newLocale: string) => {
         if (newLocale in locales) {
             setCurrentLocale(newLocale);
-            localStorage.setItem("recall-locale", newLocale);
+            localStorage.setItem("rememex-locale", newLocale);
         }
     }, []);
 

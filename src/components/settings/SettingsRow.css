@@ -1,0 +1,110 @@
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-radius: 8px;
+    transition: background 0.1s;
+}
+
+.settings-row:hover {
+    background: var(--color-control-subtle-hover);
+}
+
+.settings-row-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
+}
+
+.settings-row-icon {
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    flex-shrink: 0;
+}
+
+.settings-row-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    line-height: 1.3;
+}
+
+.settings-row-desc {
+    display: block;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    line-height: 1.3;
+}
+
+.settings-row-note {
+    font-size: 10px;
+    color: var(--color-warning);
+    margin-top: 4px;
+    padding-left: 26px;
+    width: 100%;
+}
+
+.settings-row.hotkey-row {
+    flex-wrap: wrap;
+}
+
+.toggle {
+    position: relative;
+    width: 40px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.toggle-slider {
+    position: absolute;
+    inset: 0;
+    background: var(--color-control-input-bg-active);
+    border: 1.5px solid var(--color-control-input-border-strong);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    left: 3px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--color-control-knob);
+    border-radius: 50%;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toggle input:checked+.toggle-slider {
+    background: var(--color-fill-accent-default);
+    border-color: var(--color-fill-accent-default);
+}
+
+.toggle input:checked+.toggle-slider::before {
+    transform: translateY(-50%) translateX(19px);
+    background: var(--color-on-accent);
+}
+
+.toggle-slider:hover {
+    border-color: var(--color-control-inactive);
+}
+
+.toggle input:checked+.toggle-slider:hover {
+    background: var(--color-fill-accent-secondary);
+    border-color: var(--color-fill-accent-secondary);
+}

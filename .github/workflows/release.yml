@@ -57,13 +57,13 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           args: --verbose
-          releaseName: "Recall Lite ${{ github.ref_name }}"
+          releaseName: "Rememex ${{ github.ref_name }}"
           releaseBody: ${{ steps.tag_msg.outputs.message }}
           releaseDraft: false
           prerelease: false
 
       - name: Build MCP server binary
-        run: cargo build --bin recall-mcp --release
+        run: cargo build --bin rememex-mcp --release
         working-directory: src-tauri
 
       - name: Upload MCP binary to release
@@ -71,7 +71,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            src-tauri/target/release/recall-mcp.exe
+            src-tauri/target/release/rememex-mcp.exe
             AGENT.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

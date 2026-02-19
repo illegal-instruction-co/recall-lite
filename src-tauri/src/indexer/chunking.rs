@@ -241,7 +241,7 @@ pub fn semantic_chunk_with_overrides(
         None => return chunk_with_overlap(text, config.max_bytes, config.overlap_bytes),
     };
 
-    chunk_with_semantic_config(text, &config, &pattern)
+    chunk_with_semantic_config(text, &config, pattern)
 }
 
 pub fn semantic_chunk(text: &str, ext: &str) -> Vec<String> {
@@ -252,7 +252,7 @@ pub fn semantic_chunk(text: &str, ext: &str) -> Vec<String> {
         None => return chunk_with_overlap(text, config.max_bytes, config.overlap_bytes),
     };
 
-    chunk_with_semantic_config(text, &config, &pattern)
+    chunk_with_semantic_config(text, &config, pattern)
 }
 
 fn chunk_with_semantic_config(text: &str, config: &ChunkConfig, pattern: &Regex) -> Vec<String> {

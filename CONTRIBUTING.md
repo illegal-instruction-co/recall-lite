@@ -4,11 +4,11 @@ thanks for wanting to help. here's how.
 
 ## found a bug?
 
-[open an issue](https://github.com/illegal-instruction-co/recall-lite/issues/new?template=bug_report.md). include what you did, what happened, what you expected. logs help: `%AppData%\com.recall-lite.app\recall.log`
+[open an issue](https://github.com/illegal-instruction-co/rememex/issues/new?template=bug_report.md). include what you did, what happened, what you expected. logs help: `%AppData%\com.rememex.app\rememex.log`
 
 ## want a feature?
 
-[open a feature request](https://github.com/illegal-instruction-co/recall-lite/issues/new?template=feature_request.md). explain the use case, not just the solution.
+[open a feature request](https://github.com/illegal-instruction-co/rememex/issues/new?template=feature_request.md). explain the use case, not just the solution.
 
 ## want to write code?
 
@@ -50,8 +50,8 @@ src-tauri/src/          # rust backend
 prerequisites: rust toolchain, node.js 18+, windows 10+
 
 ```bash
-git clone https://github.com/illegal-instruction-co/recall-lite.git
-cd recall-lite
+git clone https://github.com/illegal-instruction-co/rememex.git
+cd rememex
 npm install
 npm run tauri dev    # first run downloads ~2GB of models
 ```
@@ -65,4 +65,4 @@ npm run tauri dev    # first run downloads ~2GB of models
 
 ## questions?
 
-open a [discussion](https://github.com/illegal-instruction-co/recall-lite/discussions) or an issue. don't be shy.
+open a [discussion](https://github.com/illegal-instruction-co/rememex/discussions) or an issue. don't be shy.

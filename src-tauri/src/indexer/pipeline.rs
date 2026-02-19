@@ -1,3 +1,4 @@
+use log::debug;
 use serde::Serialize;
 
 #[derive(Serialize, Clone)]
@@ -18,10 +19,15 @@ pub fn score_results(
             .into_iter()
             .map(|(path, snippet, raw_score)| {
                 let sigmoid = 1.0 / (1.0 + (-raw_score).exp());
+                let score = sigmoid * 100.0;
+                debug!(
+                    "reranker score: raw={:.4} → normalized={:.1} for {}",
+                    raw_score, score, path
+                );
                 ScoredResult {
                     path,
                     snippet,
-                    score: sigmoid * 100.0,
+                    score,
                 }
             })
             .collect()
@@ -62,7 +68,7 @@ pub fn score_results(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     if used_reranker {
-        scored.retain(|r| r.score >= 25.0);
+        scored.retain(|r| r.score >= 1.0);
     }
     scored.truncate(max_results);
     scored

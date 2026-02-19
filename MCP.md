@@ -1,12 +1,12 @@
 # MCP server
 
-you know how every AI editor wants you to install some extension or connect to some API? forget that. recall-lite has an MCP server built in. one exe, stdin/stdout, done.
+you know how every AI editor wants you to install some extension or connect to some API? forget that. rememex has an MCP server built in. one exe, stdin/stdout, done.
 
 plug it into cursor, claude desktop, copilot, whatever. your AI can now search your local files without you copy-pasting paths like an animal.
 
 ## tools
 
-### `recall_search`
+### `rememex_search`
 
 full pipeline. vector search → keyword search → hybrid merge → JINA reranker. same quality as the GUI. returns paths, snippets, scores.
 
@@ -20,7 +20,7 @@ full pipeline. vector search → keyword search → hybrid merge → JINA rerank
 | `context_bytes` | number? | 1500 | snippet size in bytes (max 10000) |
 | `min_score` | number? | 0 | minimum relevance score (0-100), results below this are filtered out |
 
-### `recall_read_file`
+### `rememex_read_file`
 
 agent finds a file via search → reads it without leaving MCP. no more round-trips.
 
@@ -32,7 +32,7 @@ agent finds a file via search → reads it without leaving MCP. no more round-tr
 
 security: only reads files inside indexed container paths. can't escape to random system files.
 
-### `recall_list_files`
+### `rememex_list_files`
 
 get the project structure instantly. returns deduplicated file list with sizes.
 
@@ -42,7 +42,7 @@ get the project structure instantly. returns deduplicated file list with sizes.
 | `path_prefix` | string? | none | filter by path prefix |
 | `extensions` | string[]? | all | filter by extension |
 
-### `recall_index_status`
+### `rememex_index_status`
 
 agent checks if the index is fresh or empty before wasting time searching.
 
@@ -52,7 +52,7 @@ agent checks if the index is fresh or empty before wasting time searching.
 
 returns: `total_files`, `total_chunks`, `has_index`, `indexed_paths`, container metadata.
 
-### `recall_diff`
+### `rememex_diff`
 
 what changed recently? call this at the start of every conversation to get instant context.
 
@@ -64,7 +64,7 @@ what changed recently? call this at the start of every conversation to get insta
 
 returns: changed file paths, timestamps, previews, and detects deleted files.
 
-### `recall_related`
+### `rememex_related`
 
 given a file, finds other files with similar meaning. uses vector proximity in embedding space -- not grep, not imports, actual semantic similarity.
 
@@ -76,17 +76,17 @@ given a file, finds other files with similar meaning. uses vector proximity in e
 
 returns: related file paths with similarity scores and snippets.
 
-### `recall_list_containers`
+### `rememex_list_containers`
 
 dumps your containers. names, paths, descriptions, which one's active. no params.
 
 ## get the binary
 
-grab `recall-mcp.exe` from [releases](https://github.com/illegal-instruction-co/recall-lite/releases).
+grab `rememex-mcp.exe` from [releases](https://github.com/illegal-instruction-co/rememex/releases).
 
 or build it yourself if you're into that:
 ```bash
-cargo build --bin recall-mcp --release
+cargo build --bin rememex-mcp --release
 # sits in src-tauri/target/release/
 ```
 
@@ -103,8 +103,8 @@ settings → MCP → add server. or just edit `~/.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "recall-lite": {
-      "command": "C:\\Users\\YOU\\recall-mcp.exe"
+    "rememex": {
+      "command": "C:\\Users\\YOU\\rememex-mcp.exe"
     }
   }
 }
@@ -119,8 +119,8 @@ edit `%AppData%\Claude\claude_desktop_config.json`:
 ```json
 {
   "mcpServers": {
-    "recall-lite": {
-      "command": "C:\\Users\\YOU\\recall-mcp.exe"
+    "rememex": {
+      "command": "C:\\Users\\YOU\\rememex-mcp.exe"
     }
   }
 }
@@ -136,8 +136,8 @@ restart. done.
 {
   "mcp": {
     "servers": {
-      "recall-lite": {
-        "command": "C:\\Users\\YOU\\recall-mcp.exe"
+      "rememex": {
+        "command": "C:\\Users\\YOU\\rememex-mcp.exe"
       }
     }
   }
@@ -152,10 +152,10 @@ stdio transport. point at the exe. no args, no env vars, no ports, no docker. ju
 
 hooking up the MCP server is step 1. step 2 is making sure the AI agent actually knows *how* to use the tools strategically. that's what [AGENT.md](AGENT.md) is for.
 
-AGENT.md ships alongside `recall-mcp.exe`. default location:
+AGENT.md ships alongside `rememex-mcp.exe`. default location:
 
 ```
-%LocalAppData%\Recall-Lite\AGENT.md
+%LocalAppData%\rememex\AGENT.md
 ```
 
 every editor has its own way to inject project-level instructions. drop one of these in your project so the agent reads AGENT.md automatically:
@@ -165,18 +165,18 @@ every editor has its own way to inject project-level instructions. drop one of t
 drop a `.cursorrules` file in your project root:
 
 ```
-Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to use the recall-lite MCP tools.
+Read the file at %LocalAppData%\rememex\AGENT.md for instructions on how to use the rememex MCP tools.
 ```
 
-or if you use the rules directory, create `.cursor/rules/recall-lite.mdc`:
+or if you use the rules directory, create `.cursor/rules/rememex.mdc`:
 
 ```
 ---
-description: recall-lite MCP tool usage
+description: rememex MCP tool usage
 globs: *
 alwaysApply: true
 ---
-Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to use the recall-lite MCP tools.
+Read the file at %LocalAppData%\rememex\AGENT.md for instructions on how to use the rememex MCP tools.
 ```
 
 ### VS code copilot
@@ -184,17 +184,17 @@ Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to 
 create `.github/copilot-instructions.md`:
 
 ```markdown
-Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to use the recall-lite MCP tools.
+Read the file at %LocalAppData%\rememex\AGENT.md for instructions on how to use the rememex MCP tools.
 ```
 
 copilot auto-reads this file for every conversation in the project.
 
 ### antigravity (google)
 
-create `.agent/rules/recall-lite.md`:
+create `.agent/rules/rememex.md`:
 
 ```
-Read the file at %LocalAppData%\Recall-Lite\AGENT.md for instructions on how to use the recall-lite MCP tools.
+Read the file at %LocalAppData%\rememex\AGENT.md for instructions on how to use the rememex MCP tools.
 ```
 
 antigravity loads all `.agent/rules/*.md` files as workspace rules automatically.
@@ -208,10 +208,26 @@ copy the contents of [AGENT.md](AGENT.md) into your editor's system prompt or cu
 ## what happens under the hood
 
 on launch it:
-1. opens the same LanceDB the main app uses (`%AppData%\com.recall-lite.app\lancedb`)
-2. loads embedding model + reranker from local cache (`%AppData%\com.recall-lite.app\models`)
-3. reads your config (`%AppData%\com.recall-lite.app\config.json`)
+1. opens the same LanceDB the main app uses (`%AppData%\com.rememex.app\lancedb`)
+2. loads embedding model + reranker from local cache (`%AppData%\com.rememex.app\models`)
+3. reads your config (`%AppData%\com.rememex.app\config.json`)
 4. sits on stdin waiting for queries
+
+```mermaid
+sequenceDiagram
+    participant Editor as AI editor
+    participant MCP as rememex-mcp
+    participant DB as lancedb
+    participant Model as embedding model
+
+    Editor->>MCP: JSON-RPC over stdio
+    MCP->>Model: embed query
+    Model-->>MCP: query vector
+    MCP->>DB: vector search + FTS
+    DB-->>MCP: raw results
+    MCP->>MCP: hybrid merge → rerank → score
+    MCP-->>Editor: ranked results
+```
 
 first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weights + ~1GB reranker. after that it's instant.
 
@@ -227,9 +243,9 @@ first launch is slow (~3-5 sec) because it loads ~1.1GB of embedding model weigh
 
 **access denied on read_file** -- the file isn't inside any indexed container path. index the parent folder first
 
-**recall_diff returns nothing** -- if the main app was closed while files were edited, mtime in the index is stale. open the app and let the file watcher catch up
+**rememex_diff returns nothing** -- if the main app was closed while files were edited, mtime in the index is stale. open the app and let the file watcher catch up
 
-**recall_related says file not found** -- the file hasn't been indexed yet. index first, search second
+**rememex_related says file not found** -- the file hasn't been indexed yet. index first, search second
 
 ## privacy
 

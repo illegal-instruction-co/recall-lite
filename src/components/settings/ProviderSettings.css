@@ -1,0 +1,84 @@
+.settings-provider-toggle {
+    display: flex;
+    gap: 0;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--color-control-input-border);
+    flex-shrink: 0;
+}
+
+.provider-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    font-size: 11px;
+    font-family: inherit;
+    font-weight: 500;
+    border: none;
+    background: var(--color-control-input-bg);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.provider-btn:first-child {
+    border-right: 1px solid var(--color-control-input-border);
+}
+
+.provider-btn:hover {
+    background: var(--color-control-input-bg-active);
+    color: var(--color-text-primary);
+}
+
+.provider-btn.active {
+    background: var(--color-fill-accent-default);
+    color: var(--color-on-accent);
+}
+
+.provider-btn.active:hover {
+    background: var(--color-fill-accent-secondary);
+}
+
+.settings-remote-fields {
+    border-left: 2px solid var(--color-fill-accent-default);
+    margin-left: 14px;
+    padding-left: 0;
+    animation: settings-slide-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-provider-warning {
+    font-size: 11px;
+    color: var(--color-warning);
+    padding: 8px 14px;
+    margin: 2px 14px;
+    background: var(--color-warning-bg);
+    border-radius: 6px;
+    border: 1px solid var(--color-warning-border);
+    line-height: 1.4;
+}
+
+.settings-ext-input {
+    width: 140px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--color-control-input-border);
+    background: var(--color-control-input-bg);
+    color: var(--color-text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.15s;
+}
+
+.settings-ext-input:focus {
+    border-color: var(--color-fill-accent-default);
+    background: var(--color-control-input-bg-hover);
+    box-shadow: 0 0 0 1px var(--color-fill-accent-glow);
+}
+
+.settings-ext-input::placeholder {
+    color: var(--color-control-input-placeholder);
+    font-size: 11px;
+}

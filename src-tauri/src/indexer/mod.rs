@@ -1,6 +1,7 @@
 pub mod chunking;
 pub mod db;
 pub mod embedding;
+pub mod embedding_provider;
 pub mod file_io;
 pub mod git;
 pub mod ocr;
@@ -12,11 +13,12 @@ use std::sync::Arc;
 use anyhow::{anyhow, Result};
 use arrow_array::RecordBatchIterator;
 use lancedb::connection::Connection;
+use log::{info, debug};
 use rayon::prelude::*;
 use tokio::sync::Mutex;
 
 use crate::config::IndexingConfig;
-use crate::state::ModelState;
+use crate::state::ProviderState;
 
 use ignore::WalkBuilder;
 
@@ -35,46 +37,43 @@ struct ExtractedFile {
 }
 
 async fn embed_batch(
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     texts: Vec<String>,
 ) -> Result<Vec<Vec<f32>>> {
-    let mut guard = model_state.lock().await;
-    let model = guard
-        .model
-        .as_mut()
-        .ok_or_else(|| anyhow!("Model not loaded"))?;
-    embedding::embed_passages(model, texts)
+    let guard = provider_state.lock().await;
+    let provider = guard
+        .provider
+        .as_ref()
+        .ok_or_else(|| anyhow!("Embedding provider not initialized"))?;
+    provider.embed_passages(texts).await
 }
 
-async fn get_model_dim(model_state: &Arc<Mutex<ModelState>>) -> Result<usize> {
-    let mut guard = model_state.lock().await;
-    if let Some(dim) = guard.cached_dim {
-        return Ok(dim);
-    }
-    let model = guard
-        .model
-        .as_mut()
-        .ok_or_else(|| anyhow!("Model not loaded"))?;
-    let dim = embedding::get_model_dimension(model)?;
-    guard.cached_dim = Some(dim);
-    Ok(dim)
+async fn get_provider_dim(provider_state: &Arc<Mutex<ProviderState>>) -> Result<usize> {
+    let guard = provider_state.lock().await;
+    let provider = guard
+        .provider
+        .as_ref()
+        .ok_or_else(|| anyhow!("Embedding provider not initialized"))?;
+    provider.get_dimension().await
 }
 
 pub async fn index_directory<F>(
     root_dir: &str,
     table_name: &str,
     db: &Connection,
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     indexing_config: &IndexingConfig,
     progress_callback: F,
 ) -> Result<usize>
 where
     F: Fn(usize, usize, String) + Send + Sync + 'static,
 {
-    let dim = get_model_dim(model_state).await?;
+    let dim = get_provider_dim(provider_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
 
     let existing_mtimes = db::get_indexed_mtimes(&table).await.unwrap_or_default();
+
+    info!("Indexing directory: {}", root_dir);
 
     let all_files: Vec<_> = WalkBuilder::new(root_dir)
         .hidden(true)
@@ -84,10 +83,11 @@ where
         .add_custom_ignore_filename(".rcignore")
         .build()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().map_or(false, |ft| ft.is_file()))
+        .filter(|e| e.file_type().is_some_and(|ft| ft.is_file()))
         .map(|e| e.into_path())
         .collect();
     let total_files = all_files.len();
+    debug!("Found {} files ({} image, {} text)", total_files, all_files.iter().filter(|p| ocr::is_image_extension(&p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase())).count(), all_files.iter().filter(|p| !ocr::is_image_extension(&p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase())).count());
 
     progress_callback(0, total_files, "Scanning files...".to_string());
 
@@ -142,6 +142,8 @@ where
                 indexing_config.chunk_size,
                 indexing_config.chunk_overlap,
             );
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let chunks: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
 
             Some(ExtractedFile {
                 path: path_str,
@@ -180,6 +182,8 @@ where
                         .unwrap_or("")
                         .to_lowercase();
                     let chunks = chunking::semantic_chunk_with_overrides(&text, &ext, chunk_size, chunk_overlap);
+                    let file_name = path_clone.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    let chunks: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
                     return Some(ExtractedFile {
                         path: path_clone.to_string_lossy().to_string(),
                         chunks,
@@ -202,6 +206,7 @@ where
     let files_indexed = all_extracted.len();
 
     if files_indexed == 0 {
+        info!("No new files to index in {}", root_dir);
         progress_callback(total_files, total_files, "Done -- no new files".to_string());
         return Ok(0);
     }
@@ -235,9 +240,9 @@ where
                 format!("Embedding batch {}", batches_written),
             );
 
-            let batch_chunks: Vec<db::PendingChunk> = pending_chunks.drain(..).collect();
+            let batch_chunks: Vec<db::PendingChunk> = std::mem::take(&mut pending_chunks);
             let texts: Vec<String> = batch_chunks.iter().map(|c| c.content.clone()).collect();
-            let embeddings = embed_batch(model_state, texts).await?;
+            let embeddings = embed_batch(provider_state, texts).await?;
 
             let records: Vec<db::Record> = batch_chunks
                 .into_iter()
@@ -268,7 +273,7 @@ where
         );
 
         let texts: Vec<String> = pending_chunks.iter().map(|c| c.content.clone()).collect();
-        let embeddings = embed_batch(model_state, texts).await?;
+        let embeddings = embed_batch(provider_state, texts).await?;
 
         let records: Vec<db::Record> = pending_chunks
             .into_iter()
@@ -299,6 +304,7 @@ where
     progress_callback(files_indexed, files_indexed, "Building search index...".to_string());
     let _ = db::build_fts_index(&table).await;
 
+    info!("Indexing complete: {} files indexed in {}", files_indexed, root_dir);
     Ok(files_indexed)
 }
 
@@ -306,16 +312,17 @@ pub async fn index_single_file(
     file_path: &std::path::Path,
     table_name: &str,
     db: &Connection,
-    model_state: &Arc<Mutex<ModelState>>,
+    provider_state: &Arc<Mutex<ProviderState>>,
     use_git_history: bool,
     chunk_size: Option<usize>,
     chunk_overlap: Option<usize>,
 ) -> Result<bool> {
+    debug!("index_single_file: {}", file_path.display());
     if !file_path.is_file() {
         return Ok(false);
     }
 
-    let dim = get_model_dim(model_state).await?;
+    let dim = get_provider_dim(provider_state).await?;
     let table = db::get_or_create_table(db, table_name, dim).await?;
     let path_str = file_path.to_string_lossy().to_string();
     let mtime = file_io::get_file_mtime(file_path);
@@ -355,11 +362,11 @@ pub async fn index_single_file(
     if chunks.is_empty() {
         return Ok(false);
     }
+    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let texts: Vec<String> = chunks.into_iter().map(|c| format!("File: {}\n{}", file_name, c)).collect();
+    let embeddings = embed_batch(provider_state, texts.clone()).await?;
 
-    let texts: Vec<String> = chunks.clone();
-    let embeddings = embed_batch(model_state, texts).await?;
-
-    let records: Vec<db::Record> = chunks
+    let records: Vec<db::Record> = texts
         .into_iter()
         .zip(embeddings)
         .map(|(content, vector)| db::Record {
@@ -385,6 +392,7 @@ pub async fn delete_file_from_index(
     table_name: &str,
     db: &Connection,
 ) -> Result<()> {
+    debug!("delete_file_from_index: {}", file_path);
     let table = db.open_table(table_name).execute().await?;
     let safe_path = file_path.replace('\'', "''");
     table.delete(&format!("path = '{}'", safe_path)).await?;
