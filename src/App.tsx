@@ -57,14 +57,28 @@ function App() {
   async function fetchAnnotations() {
     try {
       const list = await invoke<{ id: string; path: string; note: string; source: string; created_at: number }[]>("get_annotations", { path: null });
+      annotationCountRef.current = list.length;
       setAnnotations(list);
     } catch {
+      annotationCountRef.current = 0;
       setAnnotations([]);
     }
   }
 
+  const annotationCountRef = useRef(0);
+
   useEffect(() => {
     fetchAnnotations();
+    const interval = setInterval(async () => {
+      try {
+        const list = await invoke<{ id: string; path: string; note: string; source: string; created_at: number }[]>("get_annotations", { path: null });
+        if (list.length !== annotationCountRef.current) {
+          annotationCountRef.current = list.length;
+          setAnnotations(list);
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+    return () => clearInterval(interval);
   }, [activeContainer]);
 
   async function fetchContainers() {
