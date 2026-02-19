@@ -122,6 +122,31 @@ RAM usage peaks during initial indexing — this is expected. once indexing comp
 
 ---
 
+## try it with real data
+
+we ship a test dataset so you can see what semantic search actually feels like. 2,483 resume PDFs across 24 professions, accountants to teachers.
+
+```bash
+# unzip test-set/data.zip somewhere
+# create a new container in rememex, point it at the unzipped folder
+# wait for indexing (~30 min on local embeddings)
+```
+
+we indexed it and ran these queries. real results, real scores:
+
+| query | top result | score | why it's interesting |
+|-------|-----------|-------|---------------------|
+| "software engineer who knows Python and machine learning" | `AGRICULTURE/62994611.pdf` — Python, TensorFlow, Keras, Scikit-learn, Pandas | 55.2 | filed under AGRICULTURE. rememex found it anyway |
+| "nurse with emergency room experience" | `ADVOCATE/46772262.pdf` — Certified Emergency Nurse, Trauma Nurse Specialist | 58.2 | filed under ADVOCATE. wrong folder, right person |
+| "someone who can cook Italian and French cuisine" | `CHEF/10276858.pdf` — Italian cuisine, fine dining, ethnic foods preparation | 34.7 | query said "French" too — top result has Italian, #3 result has "French cuisine talent". it splits the match across candidates |
+| "MBA graduate with sales leadership" | `DIGITAL-MEDIA/20330739.pdf` — built $25MM sales teams, Exec Director of Sales | 55.5 | MBA + sales, found in DIGITAL-MEDIA folder. categories don't matter |
+| "graphic designer with Photoshop and Illustrator" | `DESIGNER/29147100.pdf` — Adobe Photoshop, Illustrator, InDesign, portfolio link | 66.1 | highest score. exact skill match + portfolio |
+| "civil engineer with AutoCAD and project management" | `CONSTRUCTION/32025286.pdf` — AutoCAD Civil 3D, cost analysis, full project admin | 59.4 | construction admin, not "civil engineer" by title. meaning > title |
+
+the point: grep needs the exact keyword. rememex finds meaning — even when the words are different, even when the file is in the wrong folder.
+
+---
+
 ## agentic benchmark
 
 same 5 tasks, same codebase. grep vs rememex MCP:
@@ -136,7 +161,7 @@ same 5 tasks, same codebase. grep vs rememex MCP:
 
 **grep needs the exact keyword. rememex needs the idea.**
 
-agents using rememex are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 — that's both speed and cost.
+agents using rememex are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 , that's both speed and cost.
 
 <p align="center">
   <img src="assets/mcp.gif" width="300" />
