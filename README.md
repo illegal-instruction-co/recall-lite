@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/assets/rememex.png" width="200" />
+  <img src="src/assets/rememex.png" width="300" />
 </p>
 
 <h1 align="center">Rememex</h1>
