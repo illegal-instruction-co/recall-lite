@@ -238,7 +238,7 @@ pub async fn search(
     if let Ok(ann_results) = annotations::search_annotations(&db, &table_name, &query_vector, 10).await {
         if used_hybrid {
             for (rank, (path, note, _dist)) in ann_results.into_iter().enumerate() {
-                let rrf_score = 1.0 / (60.0 + rank as f32 + merged.len() as f32 + 1.0);
+                let rrf_score = 1.0 / (60.0 + rank as f32 + 1.0);
                 merged.push((path, note, rrf_score));
             }
             merged.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
