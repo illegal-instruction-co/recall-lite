@@ -134,7 +134,7 @@ same 5 tasks, same codebase. grep vs rememex MCP:
 agents using rememex are expected to use 5-10x fewer tokens and complete tasks significantly faster. fewer search attempts, fewer wrong files opened, fewer round-trips. the benchmark above shows 1 step vs 3-5 — that's both speed and cost.
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/35ce8fb8-b24f-4a45-86fb-80e0eae9baa3" width="300" />
+  <img src="assets/mcp.gif" width="300" />
 </p>
 
 ---
