@@ -206,6 +206,7 @@ rust (tauri 2), react/ts, [lancedb](https://lancedb.com/), Multilingual-E5-Base,
 | [CONFIG.md](CONFIG.md) | configuration reference, all options, file types, provider setup |
 | [MCP.md](MCP.md) | MCP server setup, tool reference, editor configs |
 | [AGENT.md](AGENT.md) | instructions for AI agents using rememex as a tool |
+| [BEST_PRACTICES.md](BEST_PRACTICES.md) | tips for getting the best out of rememex |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | how to contribute, bug reports, PR guidelines |
 
 ---
