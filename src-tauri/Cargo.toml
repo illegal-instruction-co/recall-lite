@@ -1,6 +1,6 @@
 [package]
 name = "rememex"
-version = "1.9.5"
+version = "2.0.0"
 description = "Local semantic file search"
 authors = ["machinetherapist"]
 edition = "2021"

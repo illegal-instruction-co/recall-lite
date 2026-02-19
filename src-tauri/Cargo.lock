@@ -7511,7 +7511,7 @@ checksum = "ba39f3699c378cd8970968dcbff9c43159ea4cfbd88d43c00b22f2ef10a435d2"
 
 [[package]]
 name = "rememex"
-version = "1.9.5"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "arrow-array",
