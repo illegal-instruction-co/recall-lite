@@ -1,3 +1,7 @@
+---
+description: rememex
+---
+
 # agent instructions
 
 you have access to rememex MCP tools. this is a local semantic search engine over the user's indexed files. it's not grep. it doesn't need exact keywords. you describe what you're looking for in natural language and it finds files by meaning.
